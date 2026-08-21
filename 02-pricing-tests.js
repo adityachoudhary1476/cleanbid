@@ -485,5 +485,75 @@ console.log('\nP0-R5 — application path (03-app-shell.html) matches engine');
   } catch(e){ check('renderProposal works post-revision', false, e.message); }
 })();
 
+// ---------- R6. Escaping / XSS regression ----------
+// Malicious-looking user input must render as TEXT, never as markup or code.
+console.log('\nP0-R6 — escaping: hostile strings stay inert');
+(function(){
+  const fs = require('fs'), vm = require('vm'), path = require('path');
+  const html = fs.readFileSync(path.join(__dirname, '03-app-shell.html'), 'utf8');
+  const script = html.match(/<script>([\s\S]*)<\/script>/)[1];
+  function makeEl(id){ return { id, value:'', textContent:'', innerHTML:'', style:{}, dataset:{},
+    classList:{_s:new Set(['page']),add(c){this._s.add(c);},remove(c){this._s.delete(c);},toggle(){return false;},contains(c){return this._s.has(c);}},
+    addEventListener(){}, appendChild(){}, remove(){}, focus(){}, querySelectorAll(){return [];}, getAttribute(){return null;} }; }
+  const els = {};
+  const documentStub = { getElementById:id=>(els[id]=els[id]||makeEl(id)), querySelector:()=>null,
+    querySelectorAll:()=>[], addEventListener(){}, body:makeEl('body'),
+    documentElement:makeEl('html'), createElement:t=>makeEl('dyn-'+t) };
+  documentStub.documentElement.style.setProperty = ()=>{};
+  const storage = {};
+  const sandbox = { console:{log(){}}, document:documentStub,
+    localStorage:{getItem:k=>storage[k]??null,setItem:(k,v)=>{storage[k]=String(v);}},
+    Date,Math,JSON,Number,String,Array,Object,parseFloat,parseInt,isNaN,Error,Set,setTimeout,clearTimeout,
+    confirm:()=>true,prompt:()=>null,alert:()=>{} };
+  sandbox.window=sandbox; sandbox.addEventListener=function(){}; sandbox.globalThis=sandbox;
+  vm.createContext(sandbox);
+  vm.runInContext(script, sandbox);
+  vm.runInContext('enterApp(true)', sandbox);
+
+  const XSSH = '<img src=x onerror=alert(1)>';           // HTML-context payload
+  const XSSQ = `\u003cscript\u003ealert(1)\u003c/script\u003e`; // script-tag payload (kept out of this file's own HTML)
+  const XSSJ = "x'); alert(1); ('";                       // JS-in-attribute payload
+
+  // esc() unit behavior
+  const escOut = vm.runInContext(`esc(${JSON.stringify(XSSH)})`, sandbox);
+  check('esc() neutralizes <img onerror>', !escOut.includes('<') && !escOut.includes('>'), escOut);
+  const escQ = vm.runInContext(`esc(${JSON.stringify(XSSQ)})`, sandbox);
+  check('esc() neutralizes <script> tag', !escQ.includes('<script'), escQ.slice(0,40)+'…');
+  const escApos = vm.runInContext(`esc("O'Brien & Co <test>")`, sandbox);
+  check("esc() escapes single quotes and ampersands", escApos.includes('&#39;') && escApos.includes('&amp;'), escApos);
+  // escJs() produces a quoted, attribute-safe JS string literal
+  const jsOut = vm.runInContext(`escJs(${JSON.stringify(XSSJ)})`, sandbox);
+  check('escJs() quotes hostile JS payloads', jsOut.startsWith('&quot;') && jsOut.endsWith('&quot;') && !jsOut.includes("'"), jsOut);
+  const roundTrip = JSON.parse(JSON.stringify(XSSJ)) === XSSJ;
+  check('payload survives JSON.stringify round-trip intact', roundTrip===true);
+
+  // End-to-end: hostile customer name through the real customers table renderer
+  vm.runInContext(`
+    state.customers.push({id:999, company:${JSON.stringify(XSSH + XSSJ)},
+      contact:'Evil \u003cb\u003eUser\u003c/b\u003e', email:'e@e.example', phone:'555', lastActivity:'now'});
+    renderCustomers();
+  `, sandbox);
+  const custHtml = documentStub.getElementById('cList').innerHTML;
+  check('renderCustomers: no executable <img> from company field',
+    !custHtml.includes('<img src=x'), '');
+  check('renderCustomers: no raw <script> survives',
+    !custHtml.includes('<script'), '');
+  check('renderCustomers: hostile text present but inert',
+    custHtml.includes('&lt;img src=x'), '');
+
+  // End-to-end: hostile quote ID through the quotes table onclick handler
+  vm.runInContext(`
+    state.quotes.unshift({id:${JSON.stringify(XSSJ)}, propertyName:'Evil Quote', companyName:'Evil Co',
+      monthly:1000, annual:12000, margin:25, status:'draft', version:1,
+      versions:[{v:1,total:1000,date:'Today',monthly:1000,annual:12000,cleaners:1,hoursPerVisit:'1',profileId:'std'}]});
+    renderQuotes();
+  `, sandbox);
+  const qHtml = documentStub.getElementById('qList').innerHTML;
+  check('renderQuotes: hostile quote ID cannot break out of onclick',
+    !qHtml.includes("alert(1)") && !qHtml.includes("'), "), qHtml.includes('openQuote(&quot;') ? 'escaped literal' : 'check');
+  // cleanup the hostile quote so later sections are unaffected
+  vm.runInContext(`state.quotes.shift();`, sandbox);
+})();
+
 console.log(`\n${passed} passed · ${failed} failed`);
 process.exit(failed===0 ? 0 : 1);
