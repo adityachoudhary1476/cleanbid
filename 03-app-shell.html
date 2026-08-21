@@ -703,6 +703,51 @@ tbody tr:hover{background:var(--paper-3)}
   table{font-size:12px}
   .calc::after{width:80px;height:80px}
 }
+/* ====================================================================
+   PRINT / PDF (P1-1)
+   Printing must produce the PROPOSAL DOCUMENT, not the app chrome.
+   Strategy: visibility-isolation — hide everything, then re-show only
+   the ancestors of #propHost and the proposal itself. This works no
+   matter which page is active when the user hits Print.
+   ==================================================================== */
+@media print{
+  @page{ size:A4; margin:14mm 12mm; }
+  html,body{
+    background:#fff !important;
+  }
+  /* Hide every element by default… */
+  body *{ visibility:hidden; }
+  /* …then reveal ONLY the proposal chain and its contents. */
+  .page[data-page="proposals"],
+  .page[data-page="proposals"] *{ visibility:visible !important; }
+  /* Neutralize layout chrome around the proposal without touching
+     visibility of the proposal chain above. */
+  #view-app > .sidebar,
+  .topbar,
+  .scrim-mob,
+  .search-results,
+  #toastWrap{ display:none !important; }
+  .main{ margin:0 !important; padding:0 !important; overflow:visible !important; }
+  .shell{ display:block !important; height:auto !important; overflow:visible !important; }
+  .page[data-page="proposals"]{ display:block !important; padding:0 !important; margin:0 !important; }
+  .page-head{ display:none !important; }   /* editor controls never print */
+  #propHost{ overflow:visible !important; }
+  /* The proposal document itself */
+  .p-shell{
+    box-shadow:none !important;
+    border:none !important;
+    margin:0 !important;
+    width:100% !important;
+    max-width:100% !important;
+  }
+  /* Keep the branded cover + accents from being stripped to gray */
+  .p-cover, .p-gbb th.featured, .p-price, .erow.gross{
+    -webkit-print-color-adjust:exact !important;
+    print-color-adjust:exact !important;
+  }
+  /* Avoid awkward page breaks inside cards/rows */
+  .p-sec, .p-gbb, .p-econ, .p-table tr, .sign-grid{ break-inside:avoid; page-break-inside:avoid; }
+}
 </style>
 </head>
 <body class="no-scroll">
@@ -1125,8 +1170,12 @@ tbody tr:hover{background:var(--paper-3)}
               <div class="price tabnum" id="cFinal">$0</div>
               <div class="annual">Annual contract value · <b class="tabnum" id="cAnnual">$0</b></div>
               <div class="annual" style="margin-top:4px">Per <span id="unitLabelSqft">sq ft</span> monthly · <b class="tabnum" id="cPSF">$0.00</b></div>
+              <div id="overrideBanner" style="display:none;margin-top:8px;padding:6px 10px;border-radius:6px;background:var(--warn-soft);color:var(--ink);font-size:12px;font-weight:600"></div>
             </div>
-            <button class="why-btn" onclick="openWhy()">ⓘ Why this price?</button>
+            <div style="display:flex;gap:8px;margin-top:2px">
+              <button class="why-btn" style="flex:1" onclick="openWhy()">ⓘ Why this price?</button>
+              <button class="why-btn" style="flex:1" onclick="openOverride()" title="Manually adjust the price — the calculated price is always preserved">✎ Override price</button>
+            </div>
           </div>
 
           <!-- Economic outcome -->
@@ -1612,6 +1661,24 @@ Demo City, USA</textarea></div>
     <div class="m-foot">
       <button class="btn btn-outline btn-sm" onclick="closeModal('customerModal')">Cancel</button>
       <button class="btn btn-accent btn-sm" onclick="commitCustomer()">Save customer</button>
+    </div>
+  </div>
+</div>
+
+<!-- Manual price override modal (P1-2) -->
+<div class="scrim" id="overrideModal">
+  <div class="modal">
+    <div class="m-head"><h3>Override price</h3><button class="x" onclick="closeModal('overrideModal')">✕</button></div>
+    <div class="m-body">
+      <p class="hint" style="margin-bottom:12px">The calculated price is always preserved. An override is a visible, reasoned adjustment — never a silent replacement.</p>
+      <div class="field"><label class="label">Calculated monthly price</label><input class="input tabnum" id="ovCalc" disabled></div>
+      <div class="field"><label class="label">Overridden monthly price</label><input class="input tabnum" id="ovPrice" type="number" min="0" step="1"></div>
+      <div class="field"><label class="label">Reason (required)</label><input class="input" id="ovReason" placeholder="e.g. Match incumbent budget; round to target"></div>
+      <p class="hint">Clear the price to remove an existing override.</p>
+    </div>
+    <div class="m-foot">
+      <button class="btn btn-outline btn-sm" onclick="closeModal('overrideModal')">Cancel</button>
+      <button class="btn btn-accent btn-sm" onclick="commitOverride()">Apply override</button>
     </div>
   </div>
 </div>
@@ -2238,6 +2305,15 @@ function recalc(){
   const annualBurden = qb.calc.annualBurden;
   const annualSupplies = qb.calc.annualSupplies;
   const annualOverhead = qb.calc.annualOverhead;
+  // ---- Manual price override (P1-2) — applied AFTER canonical math ----
+  // The calculated price is always preserved in qb.calc.monthly;
+  // qb.calc.finalMonthly is what the UI/saved quote use.
+  const ov = qb.override || null;
+  const ovActive = ov && ov.value > 0 && String(ov.value) !== String(Math.round(qb.calc.monthly));
+  qb.calc.finalMonthly = ovActive ? ov.value : qb.calc.monthly;
+  qb.calc.finalAnnual = qb.calc.finalMonthly * 12;
+  qb.calc.overridden = !!ovActive;
+
   // render calc card
   document.getElementById('cArea').textContent = fmtArea(totalArea);
   document.getElementById('cCleaners').textContent = cleaners;
@@ -2247,20 +2323,33 @@ function recalc(){
   document.getElementById('cBurden').textContent = curSym()+(burdenPerVisit+suppliesPerVisit+overheadPerVisit).toFixed(0);
   document.getElementById('cAddons').textContent = curSym()+addonCost.toFixed(0);
   document.getElementById('cMargin').textContent = margin+'%';
-  document.getElementById('cFinal').textContent = fmtCurrency(monthly);
-  document.getElementById('cAnnual').textContent = fmtCurrency(annual);
-  document.getElementById('cPSF').textContent = fmtPSF(psf);
+  // P1-2: headline shows the EFFECTIVE price (override if active),
+  // while qb.calc.monthly always preserves the canonical calculated price.
+  document.getElementById('cFinal').textContent = fmtCurrency(qb.calc.finalMonthly);
+  document.getElementById('cAnnual').textContent = fmtCurrency(qb.calc.finalAnnual);
+  document.getElementById('cPSF').textContent = fmtPSF(totalArea>0 ? qb.calc.finalMonthly/totalArea : 0);
+  const ovBanner = document.getElementById('overrideBanner');
+  if(ovBanner){
+    if(qb.calc.overridden){
+      ovBanner.style.display = 'block';
+      ovBanner.textContent = '✎ Manually overridden: ' + curSym() + Math.round(qb.calc.monthly).toLocaleString() + ' → ' + curSym() + qb.calc.finalMonthly.toLocaleString() + ' — "' + (qb.override.reason||'') + '"';
+    } else { ovBanner.style.display = 'none'; ovBanner.textContent=''; }
+  }
   document.getElementById('cPkgName').textContent = cap(qb.package);
   // any builder input now counts as unsaved
   markDirty();
   // econ
   document.getElementById('econPanel').style.display = 'block';
-  document.getElementById('eM').textContent = '$'+Math.round(monthly).toLocaleString();
-  document.getElementById('eA').textContent = '$'+Math.round(annual).toLocaleString();
-  document.getElementById('eL').textContent = '$'+Math.round(annualLabor+annualBurden).toLocaleString();
-  document.getElementById('eD').textContent = '$'+Math.round(annualDirect).toLocaleString();
-  document.getElementById('eP').textContent = '$'+Math.round(annualProfit).toLocaleString();
-  document.getElementById('eM2').textContent = (grossMargin*100).toFixed(1)+'%';
+  // P1-2: economics panel reflects the effective price too
+  const effMonthly = qb.calc.finalMonthly;
+  const effAnnual = qb.calc.finalAnnual;
+  const effProfit = effAnnual - annualDirect;
+  document.getElementById('eM').textContent = curSym()+Math.round(effMonthly).toLocaleString();
+  document.getElementById('eA').textContent = curSym()+Math.round(effAnnual).toLocaleString();
+  document.getElementById('eL').textContent = curSym()+Math.round(annualLabor+annualBurden).toLocaleString();
+  document.getElementById('eD').textContent = curSym()+Math.round(annualDirect).toLocaleString();
+  document.getElementById('eP').textContent = curSym()+Math.round(effProfit).toLocaleString();
+  document.getElementById('eM2').textContent = (effAnnual>0 ? (effProfit/effAnnual*100) : 0).toFixed(1)+'%';
   document.getElementById('eCR').textContent = annualDirect>0 ? (annual/annualDirect).toFixed(2)+'×' : '—';
   // gbb
   renderGbB();
@@ -2274,12 +2363,40 @@ function recalc(){
   document.querySelectorAll('#sqftUnitLbl, #unitLabelSqft').forEach(el => el.textContent = ulbl);
   // profile hint
   const hintEl = document.getElementById('qbProfileHint');
-  if(hintEl){ hintEl.textContent = `Wage $${P.wage}/hr · ${P.burden}% burden · ${P.overhead}% overhead · ${P.margin}% target margin`; }
+  if(hintEl){ hintEl.textContent = `Wage ${curSym()}${P.wage}/hr · ${P.burden}% burden · ${P.overhead}% overhead · ${P.margin}% target margin`; }
   // profile chip on top of calc
   renderAreas(); renderTasks(); renderAddons();
 }
 
 function pickPkg(p){ qb.package = p; recalc(); }
+
+/* ====================================================================
+   MANUAL PRICE OVERRIDE (P1-2)
+   Judgment is part of estimating. An override never destroys the
+   calculated price — it stores {value, reason} alongside it, shows a
+   persistent banner, and travels with saved quotes/versions.
+==================================================================== */
+function openOverride(){
+  if(!qb.calc){ toast('Calculate something first.','warn'); return; }
+  document.getElementById('ovCalc').value = curSym()+Math.round(qb.calc.monthly).toLocaleString();
+  document.getElementById('ovPrice').value = qb.override ? qb.override.value : '';
+  document.getElementById('ovReason').value = qb.override ? (qb.override.reason||'') : '';
+  openModal('overrideModal');
+}
+function commitOverride(){
+  const raw = parseFloat(document.getElementById('ovPrice').value);
+  const reason = (document.getElementById('ovReason').value||'').trim();
+  if(raw > 0 && !reason){ toast('A reason is required for an override.','warn'); return; }
+  if(raw > 0){
+    qb.override = { value: Math.round(raw), reason: reason };
+    toast('Override applied: '+curSym()+Math.round(raw).toLocaleString()+'/mo','success');
+  } else {
+    qb.override = null;
+    toast('Override removed — back to the calculated price.');
+  }
+  closeModal('overrideModal');
+  recalc();
+}
 
 /* ====================================================================
    G/B/B — actual comparison matrix
@@ -2304,9 +2421,9 @@ function renderGbB(){
     if(o.essential===true){
       return `<tr>
         <td><strong>${o.label}</strong></td>
-        <td class="price">$${Math.round(pEl).toLocaleString()}</td>
-        <td class="featured price featuredm">$${Math.round(pPr).toLocaleString()}<br><small style="font-size:10px;color:var(--accent);font-weight:600;text-transform:uppercase;letter-spacing:1px">Recommended</small></td>
-        <td class="price">$${Math.round(pPm).toLocaleString()}</td>
+        <td class="price">${fmtCurrency(pEl)}</td>
+        <td class="featured price featuredm">${fmtCurrency(pPr)}<br><small style="font-size:10px;color:var(--accent);font-weight:600;text-transform:uppercase;letter-spacing:1px">Recommended</small></td>
+        <td class="price">${fmtCurrency(pPm)}</td>
       </tr>`;
     }
     return `<tr><td>${o.label}</td><td>${o.essential}</td><td class="featured">${o.pro}</td><td>${o.prem}</td></tr>`;
@@ -2371,7 +2488,7 @@ function internalPriceCheck(){
   return {
     kind,
     label: kind==='ok' ? 'Within your historical band' : (diff>0 ? 'Above your historical average' : 'Below your historical average'),
-    sub: `Current: $${c.psf.toFixed(3)}/sq ft · Avg of ${ownQuotes.length} past quotes: $${avgPSF.toFixed(3)}/sq ft · ${diff>=0?'+':''}${diff.toFixed(1)}% delta. Informational only.`
+    sub: `Current: ${curSym()}${c.psf.toFixed(3)}/sq ft · Avg of ${ownQuotes.length} past quotes: ${curSym()}${avgPSF.toFixed(3)}/sq ft · ${diff>=0?'+':''}${diff.toFixed(1)}% delta. Informational only.`
   };
 }
 
@@ -2434,7 +2551,7 @@ function renderAddons(){
     return;
   }
   host.innerHTML = enabled.map(a=>{
-    const label = a.method==='visit'?a.value.toFixed(2)+' / visit' : a.method==='sqft'?'$'+a.value.toFixed(3)+' / sq ft' : a.method==='hour'?'$'+a.value.toFixed(2)+' / labor hour' : a.value.toFixed(2)+' / month';
+    const label = a.method==='visit'?a.value.toFixed(2)+' / visit' : a.method==='sqft'?curSym()+a.value.toFixed(3)+' / sq ft' : a.method==='hour'?curSym()+a.value.toFixed(2)+' / labor hour' : curSym()+a.value.toFixed(2)+' / month';
     return `<label class="cbox" style="border:1px solid var(--line);padding:6px 10px;border-radius:6px;background:var(--paper-2)"><input type="checkbox" checked disabled> <b>${esc(a.name)}</b> &nbsp;<span class="muted" style="font-size:11px">${label}</span></label>`;
   }).join('<span style="width:6px"></span>') + '<div style="clear:both"></div>';
 }
@@ -2580,7 +2697,7 @@ function renderCustomers(){
     const qs = state.quotes.filter(q=>q.customerId===c.id);
     const pipe = qs.filter(q=>['sent','viewed','negotiation'].includes(q.status)).reduce((s,q)=>s+q.monthly*12,0);
     const won = qs.filter(q=>q.status==='won').reduce((s,q)=>s+q.annual,0);
-    return `<tr><td><strong>${esc(c.company)}</strong></td><td>${esc(c.contact||'—')}</td><td>${props}</td><td>${qs.length}</td><td class="tabnum">$${Math.round(pipe).toLocaleString()}</td><td class="tabnum">$${Math.round(won).toLocaleString()}</td><td>${esc(c.lastActivity||'—')}</td></tr>`;
+    return `<tr><td><strong>${esc(c.company)}</strong></td><td>${esc(c.contact||'—')}</td><td>${props}</td><td>${qs.length}</td><td class="tabnum">${fmtCurrency(pipe)}</td><td class="tabnum">${fmtCurrency(won)}</td><td>${esc(c.lastActivity||'—')}</td></tr>`;
   }).join('');
 }
 
@@ -2599,7 +2716,7 @@ function viewProperty(id){
   const p = state.properties.find(x=>x.id===id);
   if(!p) return;
   const cust = state.customers.find(c=>c.id===p.customerId);
-  const propQuotes = state.quotes.filter(q=>q.propertyId===id).sort((a,b)=>new Date(a.modified||a.date)-new Date(b.modified||b.date));
+  const propQuotes = state.quotes.filter(q=>q.propertyId===id).sort((a,b)=>quoteDate(b)-quoteDate(a));
   const current = propQuotes[propQuotes.length-1];
   const prev = propQuotes[propQuotes.length-2];
   const deltaPct = (current && prev) ? ((current.monthly - prev.monthly)/prev.monthly)*100 : null;
@@ -2608,7 +2725,7 @@ function viewProperty(id){
     return `<div class="tl-item ${dotClass}">
       <div class="tl-when">${esc(q.modified||q.date)} · q-${esc(q.id)}</div>
       <div class="tl-what">${esc(q.status)} · ${esc(q.profileName||'Standard')}</div>
-      <div class="tl-price">$${Math.round(q.monthly).toLocaleString()}/mo · $${Math.round(q.annual).toLocaleString()}/yr</div>
+      <div class="tl-price">${fmtCurrency(q.monthly)}/mo · ${fmtCurrency(q.annual)}/yr</div>
     </div>`;
   }).join('');
   if(propQuotes.length===0) tlHtml = '<div class="empty"><div class="es">No quotes yet for this property.</div></div>';
@@ -2626,7 +2743,7 @@ function viewProperty(id){
         <div><div class="eyebrow">Sq Ft</div><div class="fr-i tabnum" style="font-size:20px">${p.sqft?p.sqft.toLocaleString():'—'}</div></div>
         <div><div class="eyebrow">Floors</div><div class="fr-i" style="font-size:20px">${p.floors||'—'}</div></div>
         <div><div class="eyebrow">Current Price</div>
-          ${current?`<div class="fr-i tabnum" style="font-size:20px;color:var(--accent)">$${Math.round(current.monthly).toLocaleString()}/mo</div>`:'—'}
+          ${current?`<div class="fr-i tabnum" style="font-size:20px;color:var(--accent)">${fmtCurrency(current.monthly)}/mo</div>`:'—'}
           ${deltaPct!==null?`<div class="hint tabnum" style="margin-top:2px">${deltaPct>=0?'+':''}${deltaPct.toFixed(1)}% vs previous</div>`:''}
         </div>
       </div>
@@ -2638,6 +2755,7 @@ function viewProperty(id){
 function loadProp(id){
   const p = state.properties.find(x=>x.id===id);
   if(!p) return;
+  qb.override = null; // fresh quote from property template — no inherited override
   document.getElementById('qbCustomer').value = p.customerId;
   loadCustomer();
   document.getElementById('qbPropName').value = p.name;
@@ -2662,13 +2780,13 @@ function renderQuotes(){
     const verCount = (q.versions||[]).length;
     const verLabel = verCount>1?`v${q.version} of ${verCount}`:'v1';
     const fu = q.followup ? formatDateChip(q.followup) : '—';
-    const verPicker = verCount>1 ? `<select class="select" style="font-size:11px;padding:4px 6px;width:auto" onchange="event.stopPropagation();openQuoteVersion(${escJs(q.id)},this.value);this.value='${q.version}'">${(q.versions||[]).map(v=>`<option value="${v.v}" ${v.v===q.version?'selected':''}>v${v.v} · $${Math.round(v.total).toLocaleString()}</option>`).join('')}</select>` : `<span class="chip">v${q.version}</span>`;
+    const verPicker = verCount>1 ? `<select class="select" style="font-size:11px;padding:4px 6px;width:auto" onchange="event.stopPropagation();openQuoteVersion(${escJs(q.id)},this.value);this.value='${q.version}'">${(q.versions||[]).map(v=>`<option value="${v.v}" ${v.v===q.version?'selected':''}>v${v.v} · ${fmtCurrency(v.total)}</option>`).join('')}</select>` : `<span class="chip">v${q.version}</span>`;
     return `
     <tr style="cursor:pointer" onclick="openQuote(${escJs(q.id)})">
       <td><strong>${esc(q.propertyName)}</strong></td>
       <td>${esc(q.companyName)}</td>
-      <td class="tabnum"><b>$${Math.round(q.monthly).toLocaleString()}</b></td>
-      <td class="tabnum">$${Math.round(q.annual).toLocaleString()}</td>
+      <td class="tabnum"><b>${fmtCurrency(q.monthly)}</b></td>
+      <td class="tabnum">${fmtCurrency(q.annual)}</td>
       <td>${q.margin}%</td>
       <td>${verPicker}</td>
       <td><span class="badge b-${q.status}">${q.status}</span></td>
@@ -2719,6 +2837,7 @@ function commitStatus(){
   if(fu) q.followup = fu;
   if(next==='lost') q.lostReason = lr;
   q.modified = 'Just now';
+  q.modifiedIso = new Date().toISOString();
   // bump version counter to reflect change
   if(next==='won'||next==='lost'){
     q.version = (q.versions||[]).length + 1;
@@ -2743,6 +2862,23 @@ function openQuoteVersion(qid, ver){
 /* ====================================================================
    SAVE QUOTE (with snapshot) + open/revise/rebid
 ==================================================================== */
+/* ====================================================================
+   QUOTE IDS (P1-3)
+   Length-based IDs collide after deletions. Use a monotonic counter
+   persisted in state so create→delete→create never reuses an ID.
+   Existing quote IDs are untouched.
+==================================================================== */
+function nextQuoteId(){
+  if(!state._quoteSeq){ 
+    // seed above the highest existing numeric ID to avoid collisions
+    let maxId = 1100;
+    state.quotes.forEach(q=>{ const m = /^Q-(\d+)$/.exec(q.id||''); if(m) maxId = Math.max(maxId, parseInt(m[1],10)); });
+    state._quoteSeq = maxId;
+  }
+  state._quoteSeq += 1;
+  return 'Q-' + state._quoteSeq;
+}
+
 function saveDraft(){
   const sqft = parseFloat(document.getElementById('qbSqft').value)||0;
   if(!sqft){ toast('Enter total square footage first.','warn'); return; }
@@ -2751,7 +2887,7 @@ function saveDraft(){
   const cust = state.customers.find(c=>c.id===customerId);
   const P = activePricing();
   const q = {
-    id: 'Q-'+(1100+state.quotes.length+1),
+    id: nextQuoteId(),
     customerId,
     propertyId:null,
     propertyName: document.getElementById('qbPropName').value||'Untitled Property',
@@ -2770,11 +2906,14 @@ function saveDraft(){
     tasks: JSON.parse(JSON.stringify(qb.tasks)),
     notes: document.getElementById('qbNotes').value||'',
     addons: [],
+    // P1-2: preserve BOTH prices on a saved quote
+    calcMonthly: Math.round(qb.calc.monthly),
+    override: qb.override ? {value: Math.round(qb.override.value), reason: qb.override.reason} : null,
     cleaners: qb.calc.cleaners,
     hoursPerVisit: qb.calc.hoursPerVisit.toFixed(1),
     visitsPerMonth: qb.calc.visitsPerMonth.toFixed(1),
-    monthly: Math.round(qb.calc.monthly),
-    annual: Math.round(qb.calc.annual),
+    monthly: Math.round(qb.calc.finalMonthly),
+    annual: Math.round(qb.calc.finalAnnual),
     margin: qb.calc.margin,
     costPerVisit: Math.round(qb.calc.costPerVisit),
     laborPerVisit: Math.round(qb.calc.laborPerVisit),
@@ -2783,8 +2922,11 @@ function saveDraft(){
     overheadPerVisit: Math.round(qb.calc.overheadPerVisit),
     addonsPerVisit: Math.round(qb.calc.addonCost),
     status:'draft', version:1,
-    versions:[{v:1,total:Math.round(qb.calc.monthly),date:'Today',monthly:Math.round(qb.calc.monthly),annual:Math.round(qb.calc.annual),cleaners:qb.calc.cleaners,hoursPerVisit:qb.calc.hoursPerVisit.toFixed(1),profileId:qb.profileId}],
+    versions:[{v:1,total:Math.round(qb.calc.finalMonthly),date:'Today',iso:new Date().toISOString(),monthly:Math.round(qb.calc.finalMonthly),annual:Math.round(qb.calc.finalAnnual),calcMonthly:Math.round(qb.calc.monthly),override:qb.override?{value:Math.round(qb.override.value),reason:qb.override.reason}:null,cleaners:qb.calc.cleaners,hoursPerVisit:qb.calc.hoursPerVisit.toFixed(1),profileId:qb.profileId}],
     date:'Today', modified:'now',
+    // P1-4: machine-readable timestamps for reliable sorting/history
+    createdIso: new Date().toISOString(),
+    modifiedIso: new Date().toISOString(),
     priceSnap:{wage:P.wage,burden:P.burden,overhead:P.overhead,margin:P.margin,minPrice:P.minPrice,supplies:P.supplies},
     productivitySnap:JSON.parse(JSON.stringify(P.productivity))
   };
@@ -2803,6 +2945,7 @@ function duplicateLast(){
   qb.tasks = JSON.parse(JSON.stringify(last.tasks||[]));
   qb.package = last.package||'professional';
   qb.profileId = last.profileId||'std';
+  qb.override = null; // overrides are judgment for a specific quote — start clean
   populateProfileDD();
   document.getElementById('qbCompany').value = last.companyName==='—'?'':last.companyName;
   document.getElementById('qbPropName').value = last.propertyName;
@@ -2823,7 +2966,7 @@ function rebudSibling(){
   const cid = +document.getElementById('qbCustomer').value;
   let last;
   if(cid){
-    last = state.quotes.filter(q=>q.customerId===cid).sort((a,b)=>new Date(b.date)-new Date(a.date))[0];
+    last = state.quotes.filter(q=>q.customerId===cid).sort((a,b)=>quoteDate(b)-quoteDate(a))[0];
   }
   if(!last){
     last = state.quotes[0] || null;
@@ -2871,6 +3014,8 @@ function commitRevise(){
       iso: new Date().toISOString(),
       monthly: Math.round(newQ.monthly),
       annual: Math.round(newQ.annual),
+      calcMonthly: Math.round(newQ.calcMonthly || newQ.monthly),
+      override: newQ.override ? {value:newQ.override.value, reason:newQ.override.reason} : null,
       cleaners: newQ.cleaners,
       hoursPerVisit: newQ.hoursPerVisit,
       profileId: newQ.profileId,
@@ -2894,6 +3039,7 @@ function commitRevise(){
     existing.areas = newQ.areas;
     existing.tasks = newQ.tasks;
     existing.modified = 'Just now';
+    existing.modifiedIso = new Date().toISOString();
     existing.priceSnap = newQ.priceSnap;
     existing.productivitySnap = newQ.productivitySnap;
     // remove the orphan draft
@@ -2913,12 +3059,16 @@ function showDiff(quote, prevVerIdx){
   const cur = quote.versions[quote.versions.length-1];
   const prev = quote.versions[Math.max(0,prevVerIdx)] || cur;
   const fields = [
-    {k:'Monthly price', cur:cur.monthly||0, prev:prev.monthly||0, fmt:v=>'$'+Math.round(v).toLocaleString()},
-    {k:'Annual', cur:cur.annual||0, prev:prev.annual||0, fmt:v=>'$'+Math.round(v).toLocaleString()},
+    {k:'Monthly price', cur:cur.monthly||0, prev:prev.monthly||0, fmt:v=>fmtCurrency(v)},
+    {k:'Annual', cur:cur.annual||0, prev:prev.annual||0, fmt:v=>fmtCurrency(v)},
     {k:'Cleaners', cur:cur.cleaners||0, prev:prev.cleaners||0, fmt:v=>v},
     {k:'Hours/visit', cur:parseFloat(cur.hoursPerVisit)||0, prev:parseFloat(prev.hoursPerVisit)||0, fmt:v=>v.toFixed(1)},
     {k:'Profile', cur:quote.profileName||'—', prev:prev.profileName||quote.profileName||'—', isText:true},
-    {k:'Margin', cur:quote.margin+'%'||'—', prev:quote.margin+'%'||'—', isText:true}
+    {k:'Margin', cur:quote.margin+'%'||'—', prev:quote.margin+'%'||'—', isText:true},
+    // P1-2: overrides are part of the story — show them in the diff
+    {k:'Calculated price', cur:(cur.calcMonthly||cur.monthly||0), prev:(prev.calcMonthly||prev.monthly||0), fmt:v=>fmtCurrency(v)},
+    {k:'Override', cur:(cur.override?(fmtCurrency(cur.override.value)+' — "'+cur.override.reason+'"'):'none'),
+                    prev:(prev.override?(fmtCurrency(prev.override.value)+' — "'+prev.override.reason+'"'):'none'), isText:true}
   ];
   const html = fields.map(f=>{
     if(f.isText){
@@ -2961,48 +3111,51 @@ function openWhy(){
       }).join('')}
     </div>` : '';
 
-  // Algebraic formula block
+  // Algebraic formula block — kept in sync with CleanBidPricing.calculatePricing()
   const formula = `
     <div class="why-formula">
 <strong>How this number is calculated</strong>
-  cost_per_visit = (hours × wage × cleaners)
-                 + labor × burden%
-                 + labor × supplies% × cleaners
-                 + burdened × overhead%
-                 + addons_per_visit
-  monthly_price  = cost_per_visit × visits_per_month
-                 &nbsp;÷ (1 − target_gross_margin)
-                 &nbsp;× package_multiplier
+  crew_hours_per_visit = Σ (area_sqft ÷ area_productivity + task_minutes ÷ 60)
+  cleaners             = ceil(crew_hours ÷ 2.5)
+  cost_per_visit       = crew_hours × wage
+                       + labor × burden%
+                       + labor × supplies%
+                       + burdened × overhead%
+                       + addons_per_visit
+  monthly_price        = cost_per_visit × visits_per_month
+                       &nbsp;÷ (1 − target_gross_margin)
+                       &nbsp;× package_multiplier
     <span class="wf-note">Numbers above come from the active profile (${esc(P.profileName)}) and the current inputs.</span>
     </div>`;
 
   const html = `
     ${formula}
     <div class="why-row"><div class="wr-l">Profile</div><div class="wr-v">${esc(P.profileName)}</div></div>
-    <div class="why-row"><div class="wr-l">Hourly wage</div><div class="wr-v">$${P.wage.toFixed(2)}/hr</div></div>
+    <div class="why-row"><div class="wr-l">Hourly wage</div><div class="wr-v">${curSym()}${P.wage.toFixed(2)}/hr</div></div>
     <div class="why-row"><div class="wr-l">Hours per visit</div><div class="wr-v">${c.hoursPerVisit.toFixed(1)}</div></div>
     <div class="why-row"><div class="wr-l">Cleaners per visit</div><div class="wr-v">${c.cleaners}</div></div>
-    <div class="why-row calc-row"><div class="wr-l">Labor cost / visit</div><div class="wr-v">$${Math.round(c.laborPerVisit).toLocaleString()}</div></div>
-    <div class="why-row"><div class="wr-l">+ Payroll burden (${P.burden}%)</div><div class="wr-v">$${Math.round(c.burdenPerVisit).toLocaleString()}</div></div>
-    <div class="why-row"><div class="wr-l">+ Supplies (${P.supplies}% × labor × cleaners)</div><div class="wr-v">$${Math.round(c.suppliesPerVisit).toLocaleString()}</div></div>
-    <div class="why-row"><div class="wr-l">+ Overhead (${P.overhead}% × burdened)</div><div class="wr-v">$${Math.round(c.overheadPerVisit).toLocaleString()}</div></div>
-    <div class="why-row"><div class="wr-l">+ Add-ons</div><div class="wr-v">$${Math.round(c.addonCost).toLocaleString()}</div></div>
-    <div class="why-row calc-row"><div class="wr-l">Cost per visit</div><div class="wr-v">$${Math.round(c.costPerVisit).toLocaleString()}</div></div>
-    <div class="why-row calc-row"><div class="wr-l">Cost / month (before margin)</div><div class="wr-v">$${Math.round(c.costPerVisit*c.visitsPerMonth).toLocaleString()}</div></div>
+    <div class="why-row calc-row"><div class="wr-l">Labor cost / visit</div><div class="wr-v">${fmtCurrency(c.laborPerVisit)}</div></div>
+    <div class="why-row"><div class="wr-l">+ Payroll burden (${P.burden}%)</div><div class="wr-v">${fmtCurrency(c.burdenPerVisit)}</div></div>
+    <div class="why-row"><div class="wr-l">+ Supplies (${P.supplies}% × labor)</div><div class="wr-v">${fmtCurrency(c.suppliesPerVisit)}</div></div>
+    <div class="why-row"><div class="wr-l">+ Overhead (${P.overhead}% × burdened)</div><div class="wr-v">${fmtCurrency(c.overheadPerVisit)}</div></div>
+    <div class="why-row"><div class="wr-l">+ Add-ons</div><div class="wr-v">${fmtCurrency(c.addonCost)}</div></div>
+    <div class="why-row calc-row"><div class="wr-l">Cost per visit</div><div class="wr-v">${fmtCurrency(c.costPerVisit)}</div></div>
+    <div class="why-row calc-row"><div class="wr-l">Cost / month (before margin)</div><div class="wr-v">${fmtCurrency(c.costPerVisit*c.visitsPerMonth)}</div></div>
     <div class="why-row"><div class="wr-l">Visits per month</div><div class="wr-v">${c.visitsPerMonth.toFixed(1)}</div></div>
     <div class="why-row"><div class="wr-l">Target gross margin (${qb.package})</div><div class="wr-v">${c.margin}%</div></div>
-    <div class="why-row total"><div class="wr-l">Recommended monthly</div><div class="wr-v">$${Math.round(c.monthly).toLocaleString()}</div></div>
-    <div class="why-row total" style="border-top-style:dashed;border-top-color:var(--line-soft)"><div class="wr-l">Annual contract (×12)</div><div class="wr-v">$${Math.round(c.annual).toLocaleString()}</div></div>
+    <div class="why-row total"><div class="wr-l">Recommended monthly</div><div class="wr-v">${fmtCurrency(c.monthly)}</div></div>
+    ${qb.calc.overridden?`<div class="why-row total" style="color:var(--warn)"><div class="wr-l">✎ Manually overridden to</div><div class="wr-v">${fmtCurrency(qb.calc.finalMonthly)} — "${esc((qb.override&&qb.override.reason)||'')}"</div></div>`:''}
+    <div class="why-row total" style="border-top-style:dashed;border-top-color:var(--line-soft)"><div class="wr-l">Annual contract (×12)</div><div class="wr-v">${fmtCurrency(qb.calc.overridden?qb.calc.finalAnnual:c.annual)}</div></div>
     ${areaDrill}
     <div class="why-assump">
       <h4>Assumptions (active profile)</h4>
       <div class="assump-row"><span>Profile</span><b>${esc(P.profileName)}</b></div>
-      <div class="assump-row"><span>Hourly wage</span><b>$${P.wage.toFixed(2)}</b></div>
+      <div class="assump-row"><span>Hourly wage</span><b>${curSym()}${P.wage.toFixed(2)}</b></div>
       <div class="assump-row"><span>Payroll burden</span><b>${P.burden}%</b></div>
       <div class="assump-row"><span>Supplies (of labor)</span><b>${P.supplies}%</b></div>
       <div class="assump-row"><span>Overhead</span><b>${P.overhead}%</b></div>
       <div class="assump-row"><span>Target gross margin</span><b>${P.margin}%</b></div>
-      <div class="assump-row"><span>Minimum price</span><b>$${(P.minPrice||800).toLocaleString()}</b></div>
+      <div class="assump-row"><span>Minimum price</span><b>${fmtCurrency(P.minPrice||800)}</b></div>
       <div class="assump-row"><span>Productivity (open office)</span><b>${(P.productivity.office||2800).toLocaleString()} sq ft / hr</b></div>
       <div class="assump-row"><span>Package multiplier</span><b>${qb.package==='professional'?'1.00 (Professional)':qb.package==='essential'?'0.92 (Essential)':'1.10 (Premium)'}</b></div>
     </div>
@@ -3036,7 +3189,50 @@ function openQuote(id){
   goTo('proposals');
   renderProposal(q);
 }
-function renderProposal(q){
+/* P1-4: version picker support — ver is the selected version NUMBER.
+   Passing it renders that historical snapshot instead of silently
+   reopening the latest revision. */
+function openQuoteVersion(qid, ver){
+  const q = state.quotes.find(x=>x.id===qid);
+  if(!q) return;
+  goTo('proposals');
+  renderProposal(q, ver ? parseInt(ver,10) : null);
+}
+// Real timestamp for a quote regardless of which legacy field holds it.
+function quoteDate(q){
+  const d = new Date(q.modifiedIso || q.createdIso || q.followupIso || q.modified || q.date);
+  return isNaN(d) ? 0 : d;
+}
+function renderProposal(q, viewVer){
+  // P1-4: if a specific historical version was requested, price/display
+  // from THAT version's stored snapshot. Scope detail predates version
+  // snapshots, so it falls back to the current record with a notice.
+  let hist = null;
+  if(viewVer && (q.versions||[]).length>1 && viewVer !== q.version){
+    hist = q.versions.find(v=>v.v===viewVer) || null;
+  }
+  const eff = hist ? {
+    monthly: hist.monthly!=null?hist.monthly:hist.total,
+    annual: hist.annual!=null?hist.annual:(hist.total||0)*12,
+    cleaners: hist.cleaners!=null?hist.cleaners:q.cleaners,
+    hoursPerVisit: hist.hoursPerVisit!=null?hist.hoursPerVisit:q.hoursPerVisit,
+    visitsPerMonth: q.visitsPerMonth,
+    margin: hist.margin!=null?hist.margin:q.margin,
+    calcMonthly: hist.calcMonthly,
+    override: hist.override,
+    label: 'v'+hist.v+' · '+(hist.date||'snapshot')
+  } : null;
+  const disp = {
+    monthly: eff?eff.monthly:q.monthly,
+    annual: eff?eff.annual:q.annual,
+    cleaners: eff?eff.cleaners:q.cleaners,
+    hoursPerVisit: eff?eff.hoursPerVisit:q.hoursPerVisit,
+    visitsPerMonth: q.visitsPerMonth,
+    margin: eff?eff.margin:q.margin,
+    override: eff?(eff.override!==undefined?eff.override:q.override):q.override,
+    calcMonthly: eff?(eff.calcMonthly!==undefined?eff.calcMonthly:q.calcMonthly):q.calcMonthly,
+    versionLabel: eff?('v'+hist.v+' of '+q.versions.length+' · '+(hist.date||'historical snapshot')):('v'+q.version)
+  };
   const org = state.org;
   const cur = state.pricing.currency==='USD'?'$':state.pricing.currency==='GBP'?'£':state.pricing.currency==='EUR'?'€':'$';
   const pkg = cap(q.package||'essential');
@@ -3062,7 +3258,7 @@ function renderProposal(q){
         <h1>Commercial Cleaning<br>Proposal</h1>
         <div class="pd-prop">${esc(q.propertyName)}</div>
         <div class="pd-foot">
-          <div><b>Proposal</b><br>${esc(q.id)} · v${q.version}</div>
+          <div><b>Proposal</b><br>${esc(q.id)} · ${esc(disp.versionLabel)}</div>
           <div><b>Profile</b><br>${esc(q.profileName||'Standard')}</div>
           <div><b>Date</b><br>${esc(q.date||'Today')}</div>
         </div>
@@ -3076,7 +3272,7 @@ function renderProposal(q){
           </div>
         </div>
         <div class="pm">
-          <div>Proposal ${esc(q.id)} · v${q.version}</div>
+          <div>Proposal ${esc(q.id)} · ${esc(disp.versionLabel)}</div>
           <div class="pno">${esc(q.profileName||'Standard')}</div>
           <div style="margin-top:6px;text-transform:none;letter-spacing:.3px">${esc(q.date||'Today')}</div>
         </div>
@@ -3109,8 +3305,8 @@ function renderProposal(q){
           <div class="p-grid2">
             <div><div class="eyebrow">Frequency</div><p style="font-size:13.5px">${freqLabel(q.frequency)}</p></div>
             <div><div class="eyebrow">Monthly visits</div><p style="font-size:13.5px" class="tabnum">${q.visitsPerMonth}</p></div>
-            <div><div class="eyebrow">Staffing per visit</div><p style="font-size:13.5px">${q.cleaners} cleaner${q.cleaners>1?'s':''}</p></div>
-            <div><div class="eyebrow">Hours per visit</div><p style="font-size:13.5px" class="tabnum">${q.hoursPerVisit}</p></div>
+            <div><div class="eyebrow">Staffing per visit</div><p style="font-size:13.5px">${disp.cleaners} cleaner${disp.cleaners>1?'s':''}</p></div>
+            <div><div class="eyebrow">Hours per visit</div><p style="font-size:13.5px" class="tabnum">${disp.hoursPerVisit}</p></div>
           </div>
         </div>
 
@@ -3154,17 +3350,18 @@ function renderProposal(q){
           <h2>Investment</h2>
           <div class="p-price">
             <div class="pl">Monthly service investment</div>
-            <div class="pp tabnum">${cur}${Math.round(q.monthly).toLocaleString()}</div>
-            <div class="pa tabnum">Annual contract value: <b>${cur}${Math.round(q.annual).toLocaleString()}</b><br>Effective rate: <b>${cur}${(q.monthly/q.sqft).toFixed(3)}/sq ft/month</b></div>
+            <div class="pp tabnum">${cur}${Math.round(disp.monthly).toLocaleString()}</div>
+            ${disp.override && disp.calcMonthly ? `<p class="hint tabnum" style="margin-top:6px">Final pricing adjusted from the calculated ${cur}${Math.round(disp.calcMonthly).toLocaleString()}/mo and confirmed by ${esc(org.name)}.</p>` : ''}
+            <div class="pa tabnum">Annual contract value: <b>${cur}${Math.round(disp.annual).toLocaleString()}</b><br>Effective rate: <b>${cur}${(disp.monthly/q.sqft).toFixed(3)}/sq ft/month</b></div>
           </div>
           <div class="p-econ">
             <h3>Contract economics (annualized)</h3>
-            <div class="erow"><span>Annual revenue</span><b class="tabnum">${cur}${Math.round(q.annual).toLocaleString()}</b></div>
-            <div class="erow"><span>Estimated annual direct cost</span><b class="tabnum">${cur}${Math.round(q.annual-(q.annual*q.margin/100)).toLocaleString()}</b></div>
-            <div class="erow gross"><span>Annual gross profit</span><b class="tabnum">${cur}${Math.round(q.annual*q.margin/100).toLocaleString()}</b></div>
-            <div class="erow" style="margin-top:6px"><span>Gross margin</span><b class="tabnum">${q.margin}%</b></div>
+            <div class="erow"><span>Annual revenue</span><b class="tabnum">${cur}${Math.round(disp.annual).toLocaleString()}</b></div>
+            <div class="erow"><span>Estimated annual direct cost</span><b class="tabnum">${cur}${Math.round(disp.annual-(disp.annual*disp.margin/100)).toLocaleString()}</b></div>
+            <div class="erow gross"><span>Annual gross profit</span><b class="tabnum">${cur}${Math.round(disp.annual*disp.margin/100).toLocaleString()}</b></div>
+            <div class="erow" style="margin-top:6px"><span>Gross margin</span><b class="tabnum">${disp.margin}%</b></div>
           </div>
-          <p class="hint" style="margin-top:14px">${pkg} package · profile: <b>${esc(q.profileName||'Standard')}</b>. Cost basis available on request. Pricing snapshot v${q.version}.</p>
+          <p class="hint" style="margin-top:14px">${pkg} package · profile: <b>${esc(q.profileName||'Standard')}</b>. Cost basis available on request. Pricing snapshot ${esc(disp.versionLabel)}.</p>
         </div>
 
         <div class="p-sec">
@@ -3276,9 +3473,9 @@ function renderDash(){
   const pipe = open.reduce((s,q)=>s+q.annual,0);
   const wonAn = won.reduce((s,q)=>s+q.annual,0);
   const winRate = decided>0?Math.round(100*won.length/decided):0;
-  document.getElementById('sPipe').textContent = '$'+Math.round(pipe).toLocaleString();
+  document.getElementById('sPipe').textContent = fmtCurrency(pipe);
   document.getElementById('sOpen').textContent = open.length;
-  document.getElementById('sWon').textContent = '$'+Math.round(wonAn).toLocaleString();
+  document.getElementById('sWon').textContent = fmtCurrency(wonAn);
   document.getElementById('sWin').textContent = winRate+'%';
   document.getElementById('sPipeMeta').textContent = open.length>0?`${open.length} quotes in motion`:'No active quotes';
   document.getElementById('sOpenMeta').textContent = open.length===1?'1 quote pending':open.length+' quotes pending';
@@ -3296,7 +3493,7 @@ function renderDash(){
       return `<tr style="cursor:pointer" onclick="openQuote(${escJs(q.id)})">
         <td><strong>${esc(q.propertyName)}</strong></td>
         <td>${esc(q.companyName)}</td>
-        <td class="tabnum"><b>$${Math.round(q.monthly).toLocaleString()}</b></td>
+        <td class="tabnum"><b>${fmtCurrency(q.monthly)}</b></td>
         <td><span class="badge b-${q.status}">${q.status}</span></td>
         <td>${fuLabel}</td>
       </tr>`;
@@ -3323,7 +3520,7 @@ function renderDash(){
       return `<div class="fu-row" style="cursor:pointer" onclick="openQuote(${escJs(q.id)})">
         <div class="fu-due">${due}</div>
         <div class="fu-prop"><div class="fu-name">${esc(q.propertyName)}</div><div class="fu-meta">${esc(q.companyName)} · ${esc(q.status)}</div></div>
-        <div class="fu-price">$${Math.round(q.monthly).toLocaleString()}/mo</div>
+        <div class="fu-price">${fmtCurrency(q.monthly)}/mo</div>
       </div>`;
     }).join('');
     document.getElementById('fuCount').textContent = fuQuotes.length+' active';
@@ -3335,9 +3532,9 @@ function renderDash(){
     const avgQ = sent.reduce((s,q)=>s+q.monthly,0)/sent.length;
     const avgSF = sent.reduce((s,q)=>s+(q.sqft||0),0)/sent.length;
     const avgP = sent.reduce((s,q)=>s+(q.sqft>0?q.monthly/q.sqft:0),0)/sent.length;
-    document.getElementById('avgQ').textContent = '$'+Math.round(avgQ).toLocaleString()+'/mo';
+    document.getElementById('avgQ').textContent = fmtCurrency(avgQ)+'/mo';
     document.getElementById('avgS').textContent = Math.round(avgSF).toLocaleString();
-    document.getElementById('avgP').textContent = '$'+avgP.toFixed(3);
+    document.getElementById('avgP').textContent = curSym()+avgP.toFixed(3);
   } else {
     document.getElementById('avgQ').textContent = '—';
     document.getElementById('avgS').textContent = '—';
@@ -3355,7 +3552,7 @@ function renderDash(){
     const sentNoFollowup = openQuotes.filter(q=>!q.followup && ['sent','viewed'].includes(q.status));
     const oldestUnanswered = openQuotes
       .filter(q=>['sent','viewed'].includes(q.status) && !q.followup)
-      .sort((a,b)=>new Date(a.modified||a.date)-new Date(b.modified||b.date))[0];
+      .sort((a,b)=>quoteDate(a)-quoteDate(b))[0];
     const attentionItems = [];
     if(overdue.length){
       attentionItems.push({label:`${overdue.length} overdue follow-up${overdue.length>1?'s':''}`, kind:'bad', quoteId:overdue[0].id});
@@ -3364,7 +3561,7 @@ function renderDash(){
       attentionItems.push({label:`${sentNoFollowup.length} quote${sentNoFollowup.length>1?'s':''} sent without follow-up date`, kind:'warn', quoteId:sentNoFollowup[0].id});
     }
     if(oldestUnanswered){
-      const days = Math.round((new Date()-new Date(oldestUnanswered.modified||oldestUnanswered.date))/86400000);
+      const days = Math.round((new Date()-quoteDate(oldestUnanswered))/86400000);
       attentionItems.push({label:`Oldest unanswered: ${esc(oldestUnanswered.propertyName)} (${days}d)`, kind:'warn', quoteId:oldestUnanswered.id});
     }
     if(attentionItems.length===0){
@@ -3391,7 +3588,7 @@ function renderDash(){
           <div style="font-weight:600;font-size:13.5px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(q.propertyName)}</div>
           <div style="font-size:11px;color:var(--text-muted);margin-top:2px">${esc(q.companyName)} · <span class="badge b-${q.status}">${q.status}</span></div>
         </div>
-        <div style="font-weight:600;font-feature-settings:\"tnum\";font-size:14px;color:var(--accent)">$${Math.round(q.monthly).toLocaleString()}<span style="font-size:10px;color:var(--text-muted);font-weight:500">/mo</span></div>
+        <div style="font-weight:600;font-feature-settings:\"tnum\";font-size:14px;color:var(--accent)">${fmtCurrency(q.monthly)}<span style="font-size:10px;color:var(--text-muted);font-weight:500">/mo</span></div>
       </div>`).join('');
     }
   }
@@ -3411,14 +3608,14 @@ function renderDash(){
           <div style="font-size:11px;color:var(--text-muted)">${esc(q.companyName)} · ${(q.sqft).toLocaleString()} sq ft</div>
         </div>
         <div style="text-align:right">
-          <div class="tabnum" style="font-weight:600">$${(q.monthly/q.sqft).toFixed(3)}/sq ft</div>
+          <div class="tabnum" style="font-weight:600">${curSym()}${(q.monthly/q.sqft).toFixed(3)}/sq ft</div>
           <div style="font-size:11px;color:${diff>=0?'var(--good)':'var(--bad)'};font-weight:600">${diff>=0?'+':''}${diff.toFixed(1)}% vs avg</div>
         </div>
       </div>`;
     }).join('');
     px.innerHTML = `
       <div style="font-size:11.5px;color:var(--text-muted);margin-bottom:10px">Internal historical avg</div>
-      <div class="fr-i tabnum" style="font-size:28px;color:var(--ink)">$${avgPSF.toFixed(3)}<span style="font-size:14px;color:var(--text-muted)">/sq ft / mo</span></div>
+      <div class="fr-i tabnum" style="font-size:28px;color:var(--ink)">${curSym()}${avgPSF.toFixed(3)}<span style="font-size:14px;color:var(--text-muted)">/sq ft / mo</span></div>
       <div style="font-size:11px;color:var(--text-muted);margin-top:4px">Across ${own.length} historical quotes</div>
       <div style="margin-top:14px">
         <div class="eyebrow" style="margin-bottom:6px">Recent comparisons</div>
@@ -3482,7 +3679,7 @@ function renderProfiles(){
         <tbody>
           ${state.profiles.map(p=>`<tr>
             <td><strong>${esc(p.name)}</strong></td>
-            <td class="tabnum">$${p.wage}/hr</td>
+            <td class="tabnum">${curSym()}${p.wage}/hr</td>
             <td class="tabnum">${p.burden}%</td>
             <td class="tabnum">${p.overhead}%</td>
             <td class="tabnum">${p.margin}%</td>
@@ -3644,7 +3841,7 @@ function runSearch(q){
     let html='';
     if(custs.length){ html+='<div class="sr-section">Customers</div>'; html+=custs.map(c=>`<div class="sr-item" onclick="goTo('customers');runSearch('');document.getElementById('globalSearch').value=''"><div>${esc(c.company)}</div><div class="sr-meta">${esc(c.contact||'')}</div></div>`).join(''); }
     if(props.length){ html+='<div class="sr-section">Properties</div>'; html+=props.map(p=>`<div class="sr-item" onclick="goTo('properties');viewProperty(${p.id});runSearch('');document.getElementById('globalSearch').value=''"><div>${esc(p.name)}</div><div class="sr-meta">${(p.sqft?p.sqft.toLocaleString()+' sq ft':'')}</div></div>`).join(''); }
-    if(qs.length){ html+='<div class="sr-section">Quotes</div>'; html+=qs.map(qq=>`<div class="sr-item" onclick="openQuote(${escJs(qq.id)});document.getElementById('globalSearch').value='';runSearch('')"><div>${esc(qq.propertyName)} <small style="color:var(--text-muted);margin-left:6px">${esc(qq.id)}</small></div><div class="sr-meta">$${Math.round(qq.monthly).toLocaleString()}/mo · ${esc(qq.status)}</div></div>`).join(''); }
+    if(qs.length){ html+='<div class="sr-section">Quotes</div>'; html+=qs.map(qq=>`<div class="sr-item" onclick="openQuote(${escJs(qq.id)});document.getElementById('globalSearch').value='';runSearch('')"><div>${esc(qq.propertyName)} <small style="color:var(--text-muted);margin-left:6px">${esc(qq.id)}</small></div><div class="sr-meta">${fmtCurrency(qq.monthly)}/mo · ${esc(qq.status)}</div></div>`).join(''); }
     host.innerHTML = html;
   }
   host.classList.add('show');

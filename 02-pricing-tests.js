@@ -555,5 +555,93 @@ console.log('\nP0-R6 — escaping: hostile strings stay inert');
   vm.runInContext(`state.quotes.shift();`, sandbox);
 })();
 
+// ---------- R7. P1 features: override, quote IDs, version picker ----------
+console.log('\nP1-R7 — manual override, deterministic IDs, version picker');
+(function(){
+  const fs = require('fs'), vm = require('vm'), path = require('path');
+  const html = fs.readFileSync(path.join(__dirname, '03-app-shell.html'), 'utf8');
+  const script = html.match(/<script>([\s\S]*)<\/script>/)[1];
+  function makeEl(id){ return { id, value:'', textContent:'', innerHTML:'', style:{}, dataset:{},
+    classList:{_s:new Set(['page']),add(c){this._s.add(c);},remove(c){this._s.delete(c);},toggle(){return false;},contains(c){return this._s.has(c);}},
+    addEventListener(){}, appendChild(){}, remove(){}, focus(){}, querySelectorAll(){return [];}, getAttribute(){return null;} }; }
+  const els = {};
+  const documentStub = { getElementById:id=>(els[id]=els[id]||makeEl(id)), querySelector:()=>null,
+    querySelectorAll:()=>[], addEventListener(){}, body:makeEl('body'),
+    documentElement:makeEl('html'), createElement:t=>makeEl('dyn-'+t) };
+  documentStub.documentElement.style.setProperty = ()=>{};
+  const storage = {};
+  const sandbox = { console:{log(){}}, document:documentStub,
+    localStorage:{getItem:k=>storage[k]??null,setItem:(k,v)=>{storage[k]=String(v);}},
+    Date,Math,JSON,Number,String,Array,Object,parseFloat,parseInt,isNaN,Error,Set,setTimeout,clearTimeout,
+    confirm:()=>true,prompt:()=>null,alert:()=>{} };
+  sandbox.window=sandbox; sandbox.addEventListener=function(){}; sandbox.globalThis=sandbox;
+  vm.createContext(sandbox);
+  vm.runInContext(script, sandbox);
+  vm.runInContext('enterApp(true)', sandbox);
+
+  // R7a: manual price override preserves the calculated price
+  vm.runInContext(`
+    document.getElementById('qbSqft').value='50000';
+    recalc();
+  `, sandbox);
+  const calcBefore = JSON.parse(vm.runInContext('JSON.stringify({m:qb.calc.monthly,f:qb.calc.finalMonthly,o:!!qb.calc.overridden})', sandbox));
+  check('override inactive by default', calcBefore.o===false && calcBefore.f===calcBefore.m,
+    'monthly='+calcBefore.m+' final='+calcBefore.f);
+  vm.runInContext(`
+    document.getElementById('ovPrice').value='9999';
+    document.getElementById('ovReason').value='Match incumbent budget';
+    commitOverride();
+  `, sandbox);
+  const ovState = JSON.parse(vm.runInContext('JSON.stringify({m:Math.round(qb.calc.monthly),f:qb.calc.finalMonthly,o:qb.calc.overridden,r:qb.override.reason})', sandbox));
+  check('override applied to effective price', ovState.f===9999 && ovState.o===true, 'final='+ovState.f);
+  check('calculated price preserved alongside override', Math.abs(ovState.m - Math.round(calcBefore.m)) < 0.01, 'calc='+ovState.m);
+  check('override reason stored', ovState.r==='Match incumbent budget');
+  // persistence round-trip
+  vm.runInContext(`commitRevise.__noop || saveDraft()`, sandbox);
+  const savedQ = JSON.parse(vm.runInContext('JSON.stringify(state.quotes[0])', sandbox));
+  check('saved quote keeps calculated + overridden prices',
+    savedQ.calcMonthly===Math.round(calcBefore.m) && savedQ.monthly===9999 &&
+    savedQ.override && savedQ.override.value===9999,
+    'calc='+savedQ.calcMonthly+' final='+savedQ.monthly);
+  // removing the override restores canonical pricing
+  vm.runInContext(`
+    document.getElementById('ovPrice').value='';
+    commitOverride();
+  `, sandbox);
+  const afterClear = JSON.parse(vm.runInContext('JSON.stringify({f:Math.round(qb.calc.finalMonthly),o:qb.calc.overridden})', sandbox));
+  check('clearing override restores canonical price', afterClear.o===false && afterClear.f===Math.round(calcBefore.m), 'final='+afterClear.f);
+
+  // R7b: deterministic quote IDs survive delete + recreate
+  const ids = JSON.parse(vm.runInContext(`JSON.stringify((function(){
+    const out=[];
+    for(let i=0;i<3;i++){ saveDraft(); out.push(state.quotes[0].id); }
+    return out;
+  })())`, sandbox));
+  check('quote IDs strictly increasing', ids.every((v,i)=>i===0 || parseInt(v.slice(2))>parseInt(ids[i-1].slice(2))), ids.join(','));
+  check('no duplicate quote IDs', new Set(ids).size===ids.length);
+
+  // R7c: version picker shows historical version data
+  const q1042 = JSON.parse(vm.runInContext(`JSON.stringify(state.quotes.find(x=>x.id==='Q-1042')||state.quotes.find(x=>x.versions&&x.versions.length>1))`, sandbox));
+  if(q1042){
+    try {
+      vm.runInContext(`renderProposal(state.quotes.find(x=>x.id==='Q-1042'||(x.versions&&x.versions.length>1)), 1)`, sandbox);
+      const propHtml = documentStub.getElementById('propHost').innerHTML;
+      const v1Total = q1042.versions[0].total;
+      check('version picker renders v1 snapshot price', propHtml.includes(Math.round(v1Total).toLocaleString()), 'looking for '+Math.round(v1Total).toLocaleString());
+      check('version picker labels historical version', propHtml.includes('v1 of'), '');
+    } catch(e){ check('version picker renders', false, e.message); }
+  }
+
+  // R7d: ISO timestamps present on new quotes
+  const newest = JSON.parse(vm.runInContext('JSON.stringify(state.quotes[0])', sandbox));
+  check('new quotes carry createdIso/modifiedIso', !!(newest.createdIso && newest.modifiedIso &&
+    !isNaN(new Date(newest.createdIso)) && !isNaN(new Date(newest.modifiedIso))),
+    (newest.createdIso||'').slice(0,10));
+
+  // R7e: currency helper respects configuration
+  const gbpSym = vm.runInContext(`(function(){ state.pricing.currency='GBP'; const s=curSym(); state.pricing.currency='USD'; return s; })()`, sandbox);
+  check('currency symbol follows configuration', gbpSym==='£', gbpSym);
+})();
+
 console.log(`\n${passed} passed · ${failed} failed`);
 process.exit(failed===0 ? 0 : 1);
