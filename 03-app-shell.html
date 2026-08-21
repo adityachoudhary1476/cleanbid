@@ -58,6 +58,8 @@ img{display:block;max-width:100%}
 .btn-outline:hover{background:var(--paper-3);border-color:#cfc7af}
 .btn-ghost{color:var(--text);padding:8px 12px;font-weight:500;border-radius:var(--r)}
 .btn-ghost:hover{background:var(--paper-3);color:var(--ink)}
+#clearSurveyBtn{color:var(--warn);font-size:11px;padding:4px 10px;border-radius:var(--r);font-weight:600;text-transform:uppercase;letter-spacing:.5px}
+#clearSurveyBtn:hover{background:var(--warn-soft);color:var(--ink)}
 .btn-sm{padding:7px 14px;font-size:12.5px}
 .btn-lg{padding:14px 22px;font-size:14px}
 .btn-ico{padding:6px 9px;border-radius:var(--r);font-size:14px}
@@ -284,18 +286,44 @@ tbody tr:hover{background:var(--paper-3)}
 .sb h4 .add:hover{background:var(--accent-soft)}
 
 /* area chip rows — fast inline add */
-.area-chip{display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--paper-3);border:1px solid var(--line-soft);border-radius:8px;margin-bottom:6px;transition:var(--t)}
+.area-chip{display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--paper-3);border:1px solid var(--line-soft);border-radius:8px;margin-bottom:6px;transition:var(--t)}
 .area-chip:hover{border-color:var(--line);box-shadow:var(--shadow-1)}
 .area-chip .ac-name{font-weight:600;font-size:13px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .area-chip .ac-meta{font-size:11px;color:var(--text-muted);flex:0 0 auto;font-weight:500}
 .area-chip .ac-detail{font-size:11px;color:var(--text-muted);width:100%;margin-top:4px;display:flex;gap:10px;flex-wrap:wrap}
 .area-chip .ac-detail span{background:var(--paper-2);padding:1px 6px;border-radius:8px;border:1px solid var(--line-soft)}
-.area-chip .rm{color:var(--bad);font-size:14px;padding:3px 7px;border-radius:4px;margin-left:auto}
+.area-chip .dup{color:var(--info);font-size:13px;padding:6px 10px;border-radius:6px;line-height:1;min-width:32px;min-height:32px;display:inline-flex;align-items:center;justify-content:center}
+.area-chip .dup:hover{background:var(--info-soft)}
+.area-chip .rm{color:var(--bad);font-size:13px;padding:6px 10px;border-radius:6px;margin-left:auto;min-width:32px;min-height:32px;display:inline-flex;align-items:center;justify-content:center}
 .area-chip .rm:hover{background:var(--bad-soft)}
+/* field-use touch targets: duplicate/remove buttons ≥32px */
+.area-chip .rm{min-width:32px;min-height:32px;display:inline-flex;align-items:center;justify-content:center}
+
+/* ====================================================================
+   MOBILE STICKY PRICE BAR (workflow P2-1)
+   On phone/tablet the dark calc card scrolls out of view (position:static
+   below 1100px) and an estimator standing in a lobby loses the live total.
+   This bar mirrors recalc()'s canonical output so the price is always on
+   screen while surveying. Display-only — never touches pricing math.
+   ==================================================================== */
+.m-pricebar{display:none}
+@media (max-width:1100px){
+  .m-pricebar{
+    display:flex;align-items:center;gap:14px;
+    position:fixed;left:0;right:0;bottom:0;z-index:70;
+    background:var(--ink);color:#fff;
+    padding:10px 16px;
+    padding-bottom:calc(10px + env(safe-area-inset-bottom, 0px));
+    border-top:2px solid var(--accent);
+    box-shadow:0 -8px 24px rgba(20,40,25,.28);
+  }
+  .page[data-page="newquote"]{padding-bottom:120px}
+  .toasts{bottom:86px}
+}
 
 /* quick-pick type chips */
 .type-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
-.type-chip{padding:8px 12px;background:var(--paper-2);border:1px solid var(--line);border-radius:18px;font-size:12px;font-weight:600;color:var(--text);cursor:pointer;transition:var(--t)}
+.type-chip{padding:10px 14px;background:var(--paper-2);border:1px solid var(--line);border-radius:18px;font-size:12px;font-weight:600;color:var(--text);cursor:pointer;transition:var(--t);min-height:40px;display:inline-flex;align-items:center;justify-content:center}
 .type-chip:hover{border-color:var(--accent);color:var(--ink)}
 .type-chip.on{background:var(--accent);color:#fff;border-color:var(--accent)}
 
@@ -530,7 +558,7 @@ tbody tr:hover{background:var(--paper-3)}
 /* tablet / laptop split */
 @media (max-width:1100px){
   .qb{grid-template-columns:1fr}
-  .calc{position:static}
+  .calc{position:sticky;top:90px}
   .stats{grid-template-columns:repeat(2,1fr)}
   .roi-grid{grid-template-columns:1fr;gap:14px}
   .roi-arrow{display:none}
@@ -644,7 +672,7 @@ tbody tr:hover{background:var(--paper-3)}
   .p-gbb th,.p-gbb td{padding:8px 6px;font-size:12px}
 
   /* quote builder — sticky calc becomes full card */
-  .calc{padding:18px}
+  .calc{position:static;padding:18px}
   .calc .total .price{font-size:34px}
   .calc-econ,.health,.gbb{padding:14px}
   .gbb{overflow-x:auto;-webkit-overflow-scrolling:touch}
@@ -752,10 +780,101 @@ tbody tr:hover{background:var(--paper-3)}
 </head>
 <body class="no-scroll">
 
+<!-- Auth Loading Overlay -->
+<div id="authLoading" class="hidden" style="position:fixed;inset:0;background:var(--paper);z-index:9999;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px">
+  <div style="width:40px;height:40px;border:3px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite"></div>
+  <p style="color:var(--text-muted);font-size:13px">Loading...</p>
+</div>
+<style>
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+
 <!-- ============================================================
      LOGIN / HERO (Finova style + new ROI section + new benefits)
 ============================================================ -->
 <div id="view-login" class="hs">
+  <!-- Auth Forms (hidden by default) -->
+  <div id="authForms" class="hidden" style="position:fixed;inset:0;background:rgba(20,40,25,.45);backdrop-filter:blur(4px);z-index:100;display:flex;align-items:center;justify-content:center;padding:20px">
+    <div style="background:var(--paper-2);border-radius:14px;max-width:420px;width:100%;padding:32px;box-shadow:var(--shadow-3)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
+        <h3 style="font-family:'Fraunces',serif;font-style:italic;font-size:22px;color:var(--ink)" id="authTitle">Sign In</h3>
+        <button onclick="closeAuthForms()" style="background:none;border:none;color:var(--text-muted);font-size:18px;cursor:pointer;padding:4px 8px">✕</button>
+      </div>
+
+      <!-- Sign In Form -->
+      <form id="signinForm" onsubmit="event.preventDefault(); handleSignIn()">
+        <div class="field">
+          <label class="label">Email</label>
+          <input class="input" type="email" id="signinEmail" placeholder="you@company.com" required>
+        </div>
+        <div class="field">
+          <label class="label">Password</label>
+          <input class="input" type="password" id="signinPassword" placeholder="••••••••" required>
+        </div>
+        <button type="submit" class="btn btn-ink" style="width:100%;justify-content:center;margin-top:8px">Sign In</button>
+        <p style="text-align:center;margin-top:16px;font-size:13px;color:var(--text-muted)">
+          Don't have an account? <a href="#" onclick="showSignup()" style="color:var(--accent);font-weight:600">Sign up</a>
+        </p>
+      </form>
+
+      <!-- Sign Up Form -->
+      <form id="signupForm" class="hidden" onsubmit="event.preventDefault(); handleSignUp()">
+        <div class="field">
+          <label class="label">Full Name</label>
+          <input class="input" type="text" id="signupName" placeholder="Jane Doe" required>
+        </div>
+        <div class="field">
+          <label class="label">Email</label>
+          <input class="input" type="email" id="signupEmail" placeholder="you@company.com" required>
+        </div>
+        <div class="field">
+          <label class="label">Password</label>
+          <input class="input" type="password" id="signupPassword" placeholder="Min 6 characters" required minlength="6">
+        </div>
+        <div class="field">
+          <label class="label">Company Name</label>
+          <input class="input" type="text" id="signupCompany" placeholder="Summit Cleaning" required>
+        </div>
+        <button type="submit" class="btn btn-ink" style="width:100%;justify-content:center;margin-top:8px">Create Account</button>
+        <p style="text-align:center;margin-top:16px;font-size:13px;color:var(--text-muted)">
+          Already have an account? <a href="#" onclick="showSignin()" style="color:var(--accent);font-weight:600">Sign in</a>
+        </p>
+      </form>
+    </div>
+  </div>
+
+  <!-- Workspace Onboarding (hidden by default) -->
+  <div id="workspaceOnboarding" class="hidden" style="position:fixed;inset:0;background:rgba(20,40,25,.45);backdrop-filter:blur(4px);z-index:101;display:flex;align-items:center;justify-content:center;padding:20px">
+    <div style="background:var(--paper-2);border-radius:14px;max-width:480px;width:100%;padding:32px;box-shadow:var(--shadow-3)">
+      <h3 style="font-family:'Fraunces',serif;font-style:italic;font-size:22px;color:var(--ink);margin-bottom:8px">Create Your Workspace</h3>
+      <p style="color:var(--text-muted);font-size:13px;margin-bottom:24px">Set up your company workspace to get started.</p>
+      <form onsubmit="event.preventDefault(); handleCreateWorkspace()">
+        <div class="field">
+          <label class="label">Company Name</label>
+          <input class="input" type="text" id="workspaceName" placeholder="Summit Facility Services" required>
+        </div>
+        <div class="field">
+          <label class="label">Industry (optional)</label>
+          <select class="select" id="workspaceIndustry">
+            <option value="commercial">Commercial Cleaning</option>
+            <option value="janitorial">Janitorial Services</option>
+            <option value="specialty">Specialty Cleaning</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+        <button type="submit" class="btn btn-ink" style="width:100%;justify-content:center;margin-top:8px">Create Workspace</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Workspace Picker (hidden by default) -->
+  <div id="workspacePicker" class="hidden" style="position:fixed;inset:0;background:rgba(20,40,25,.45);backdrop-filter:blur(4px);z-index:102;display:flex;align-items:center;justify-content:center;padding:20px">
+    <div style="background:var(--paper-2);border-radius:14px;max-width:480px;width:100%;padding:32px;box-shadow:var(--shadow-3)">
+      <h3 style="font-family:'Fraunces',serif;font-style:italic;font-size:22px;color:var(--ink);margin-bottom:8px">Select Workspace</h3>
+      <p style="color:var(--text-muted);font-size:13px;margin-bottom:24px">You belong to multiple workspaces. Choose one to continue.</p>
+      <div id="workspaceList" style="display:flex;flex-direction:column;gap:8px"></div>
+    </div>
+  </div>
   <div class="hero">
     <div style="width:100%">
       <div class="hero-bar">
@@ -765,9 +884,9 @@ tbody tr:hover{background:var(--paper-3)}
         </div>
         <div class="navlinks">
           <a onclick="document.getElementById('roi-sec').scrollIntoView({behavior:'smooth'})">How it works</a>
-          <a onclick="enterApp(true)">Live demo</a>
+          <a href="#" onclick="showAuthForms(); return false;">Sign In</a>
           <a onclick="document.getElementById('benefits-sec').scrollIntoView({behavior:'smooth'})">Benefits</a>
-          <a class="cta" onclick="enterApp(true)">Try Demo</a>
+          <a class="cta" onclick="enterDemo()">Try Demo</a>
         </div>
       </div>
 
@@ -777,15 +896,16 @@ tbody tr:hover{background:var(--paper-3)}
           <h1>Quote the<br>building.<br><span class="it">Then win it.</span></h1>
           <p class="sub-line">Turn a commercial site survey into a calculated estimate and client-ready proposal in minutes. The estimator's tool, finally built for the work.</p>
           <div class="cta-row">
-            <button class="btn-ink-pill" onclick="enterApp(true)">Open Interactive Demo →</button>
-            <button class="btn-ghost-pill" onclick="document.getElementById('roi-sec').scrollIntoView({behavior:'smooth'})">See How It Works</button>
+            <button class="btn-ink-pill" onclick="enterDemo()">Try Interactive Demo →</button>
+            <button class="btn-ghost-pill" onclick="showAuthForms()">Sign In to Your Workspace</button>
           </div>
         </div>
         <div class="hero-right">
-          <h2>Sign in.</h2>
-          <p class="h-sub">Click below to open the demo workspace.</p>
-          <button class="btn btn-ink btn-lg" onclick="enterApp(true)">Open the Demo →</button>
-          <p class="demo-hint">Demo is loaded with 5 sample quotes, 4 customers, full pricing rules & branding.</p>
+          <h2>Get started.</h2>
+          <p class="h-sub">Sign in to your workspace or explore the interactive demo.</p>
+          <button class="btn btn-ink btn-lg" onclick="showAuthForms()" style="width:100%;justify-content:center">Sign In</button>
+          <button class="btn btn-ghost-pill" onclick="enterDemo()" style="width:100%;justify-content:center;margin-top:10px;border:1px solid rgba(255,255,255,.5);color:#fff">Try Interactive Demo</button>
+          <p class="demo-hint">Demo is loaded with sample data. No account required.</p>
         </div>
       </div>
     </div>
@@ -903,7 +1023,7 @@ tbody tr:hover{background:var(--paper-3)}
         <div class="un" id="userName">Jane Doe</div>
         <div class="ur" id="userRole">Admin</div>
       </div>
-      <button class="logout" onclick="doLogout()" title="Sign out">⎋</button>
+      <button class="logout" onclick="handleLogout()" title="Sign out">⎋</button>
     </div>
   </nav>
 
@@ -914,13 +1034,15 @@ tbody tr:hover{background:var(--paper-3)}
       <div class="crumbs"><span id="crumbSection">Workspace</span> <i>/</i> <b id="crumbPage">Dashboard</b></div>
       <div class="search-wrap">
         <span class="si">⌕</span>
-        <input id="globalSearch" type="text" placeholder="Search customers, properties, quotes…" oninput="runSearch(this.value)" onfocus="runSearch(this.value)">
+        <input id="globalSearch" type="text" placeholder="Search customers, properties, quotes…" oninput="runSearch(this.value); this.nextElementSibling.style.display = this.value.length > 0 ? 'flex' : 'none'" onfocus="runSearch(this.value)">
+        <span class="search-clear" aria-label="Clear search" style="position:absolute; right:8px; top:50%; transform:translateY(-50%); padding:4px 8px; background:var(--paper-2); border:1px solid var(--line); border-radius:4px; font-size:12px; color:var(--text-muted); cursor:pointer; display:none;">×</span>
         <kbd>⌘K</kbd>
         <div class="search-results" id="searchResults"></div>
       </div>
       <div class="topbar-r">
         <span data-dirty-dot class="unsaved-dot" style="display:none" title="You have unsaved changes in the quote builder"></span>
-        <button class="btn btn-ghost btn-sm" onclick="enterApp(true)" title="Reload demo">↻ Demo</button>
+        <span id="workspaceLabel" class="chip" style="display:none;font-size:11px;padding:4px 10px"></span>
+        <button class="btn btn-ghost btn-sm" onclick="enterDemo()" title="Reload demo">↻ Demo</button>
         <button class="btn btn-ink btn-sm" onclick="goTo('newquote')">+ New Quote</button>
       </div>
     </header>
@@ -1043,7 +1165,10 @@ tbody tr:hover{background:var(--paper-3)}
               <button class="btn btn-ghost btn-sm" onclick="openCust()">+ New</button>
             </div>
             <div class="field"><label class="label">Existing customer</label>
-              <select class="select" id="qbCustomer" onchange="loadCustomer()"><option value="">— New customer —</option></select>
+              <div style="display:flex;gap:8px">
+                <select class="select" id="qbCustomer" onchange="loadCustomer()" style="flex:1"><option value="">— New customer —</option></select>
+                <button class="btn btn-ghost btn-sm" onclick="openQuickCust()" title="Create new customer" style="white-space:nowrap">+ New Customer</button>
+              </div>
             </div>
             <div class="row2">
               <div class="field"><label class="label req">Company</label><input class="input" id="qbCompany" placeholder="Acme Corp"></div>
@@ -1102,6 +1227,7 @@ tbody tr:hover{background:var(--paper-3)}
             <div class="card-head">
               <h3>&nbsp;Site survey</h3>
               <span class="sub tabnum" id="summSurvey">0 areas · 0 sq ft</span>
+              <button class="btn btn-ghost btn-sm" id="clearSurveyBtn" style="display:none" onclick="clearSurvey()">Clear survey</button>
             </div>
 
             <div class="sb">
@@ -1251,16 +1377,18 @@ tbody tr:hover{background:var(--paper-3)}
           <h2><em>Customers</em> you're selling to.</h2>
           <p>One record per company. Multiple properties per company.</p>
         </div>
+        <button class="btn btn-outline" onclick="openImportWizard()">⬆ Import Excel / CSV</button>
         <button class="btn btn-accent" onclick="openCust()">+ New Customer</button>
       </div>
       <div class="tw">
         <table>
           <thead><tr><th>Company</th><th>Contact</th><th>Properties</th><th>Quotes</th><th>Pipeline</th><th>Won</th><th>Last Activity</th></tr></thead>
           <tbody id="cList">
-            <tr><td colspan="7"><div class="empty"><div class="ei">◔</div><div class="et">No customers yet.</div><div class="es">Add a customer or build a quote — they'll show up here.</div></div></td></tr>
+            <tr><td colspan="7"><div class="empty"><div class="ei">◔</div><div class="et">No customers yet.</div><div class="es">Add a customer or build a quote — they\'ll show up here.</div></div></td></tr>
           </tbody>
         </table>
       </div>
+      <div id="custDetail" class="mt-24" style="margin-top:24px"></div>
     </section>
 
     <!-- ============== PROPERTIES PAGE ============== -->
@@ -1293,7 +1421,7 @@ tbody tr:hover{background:var(--paper-3)}
         <div class="row g8">
           <button class="btn btn-outline btn-sm" onclick="goTo('quotes')">← Back to quotes</button>
           <button class="btn btn-outline btn-sm" onclick="window.print()">⬇ Print / PDF</button>
-          <button class="btn btn-accent btn-sm" onclick="openEmail()">📤 Send to client</button>
+          <button class="btn btn-accent btn-sm" onclick="openEmail(currentQuoteId())">📤 Send to client</button>
         </div>
       </div>
       <div id="propHost"></div>
@@ -1486,6 +1614,19 @@ Demo City, USA</textarea></div>
   </div><!-- /main -->
 </div><!-- /shell -->
 
+<!-- Mobile sticky price bar (quote builder, ≤1100px) — mirrors recalc() output -->
+<div class="m-pricebar" id="mPricebar">
+  <div style="flex:1;min-width:0">
+    <div style="font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:rgba(255,255,255,.55);font-weight:700" id="mpPkg">Professional</div>
+    <div style="display:flex;align-items:baseline;gap:8px">
+      <div class="fr-i tabnum" id="mpMonthly" style="font-size:24px;line-height:1.1">$0</div>
+      <div style="font-size:11px;color:rgba(255,255,255,.6)" >/mo</div>
+      <div class="tabnum" id="mpHours" style="font-size:11px;color:rgba(255,255,255,.6)">0 hrs · 0 cleaners</div>
+    </div>
+  </div>
+  <button class="btn btn-accent btn-sm" onclick="generateProposal()">Proposal →</button>
+</div>
+
 <!-- ============================================================
      MODALS
 ============================================================ -->
@@ -1661,6 +1802,68 @@ Demo City, USA</textarea></div>
     <div class="m-foot">
       <button class="btn btn-outline btn-sm" onclick="closeModal('customerModal')">Cancel</button>
       <button class="btn btn-accent btn-sm" onclick="commitCustomer()">Save customer</button>
+    </div>
+  </div>
+</div>
+
+<!-- Quick-create customer modal (builder inline) -->
+<div class="scrim" id="quickCustModal">
+  <div class="modal">
+    <div class="m-head"><h3>New customer</h3><button class="x" onclick="closeModal('quickCustModal')">✕</button></div>
+    <div class="m-body">
+      <div class="field"><label class="label req">Company</label><input class="input" id="qcCompany" placeholder="Acme Corp"></div>
+      <div class="field"><label class="label">Phone</label><input class="input" id="qcPhone" placeholder="555-0123"></div>
+    </div>
+    <div class="m-foot">
+      <button class="btn btn-outline btn-sm" onclick="closeModal('quickCustModal')">Cancel</button>
+      <button class="btn btn-accent btn-sm" onclick="commitQuickCust()">Save & select</button>
+    </div>
+  </div>
+</div>
+
+<!-- Excel/CSV import wizard -->
+<div class="scrim" id="importWizard">
+  <div class="modal">
+    <div class="m-head"><h3>Import customers &amp; properties</h3><button class="x" onclick="closeModal('importWizard')">✕</button></div>
+    <div class="m-body">
+
+      <!-- Step 1: choose file -->
+      <div id="iwStep1">
+        <p class="hint" style="margin-bottom:12px">Bring your list over from Excel, Google Sheets, or another tool. Export it as a <strong>CSV file</strong> (File → Save As → CSV), or pick an <strong>.xlsx</strong> workbook directly. Nothing is saved until you review and confirm.</p>
+        <input type="file" id="iwFile" accept=".csv,.tsv,.txt,.xlsx,.xls" style="display:none">
+        <button class="btn btn-accent" style="width:100%;justify-content:center" onclick="document.getElementById('iwFile').click()">Choose file…</button>
+        <div style="margin-top:14px;font-size:11px;color:var(--text-muted)">
+          Recognized columns (order doesn't matter): Company · Contact · Email · Phone · Address · Notes · Property · Type · Sq Ft · Floors
+        </div>
+      </div>
+
+      <!-- Step 2: map + preview -->
+      <div id="iwStep2" class="hidden">
+        <div id="iwRateBanner"></div>
+        <p class="hint" style="margin-bottom:10px">Check the mapping below — change any dropdown if a column landed in the wrong place.</p>
+        <div id="iwMap" style="display:flex;flex-direction:column;gap:6px;max-height:180px;overflow-y:auto;margin-bottom:14px"></div>
+        <div class="tw" style="max-height:260px;overflow-y:auto">
+          <table>
+            <thead><tr id="iwPrevHead"></tr></thead>
+            <tbody id="iwPrevBody"></tbody>
+          </table>
+        </div>
+        <div class="field" style="margin-top:14px">
+          <label class="label">If a company already exists in CleanBid</label>
+          <select class="select" id="iwDupPolicy">
+            <option value="merge">Merge into it — update blank fields only (recommended)</option>
+            <option value="skip">Skip the row — keep my existing customer untouched</option>
+            <option value="duplicate">Create a second customer with the same name</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Step 3: result -->
+      <div id="iwStep3" class="hidden"></div>
+    </div>
+    <div class="m-foot">
+      <button class="btn btn-outline btn-sm" onclick="closeModal('importWizard')" id="iwCancel">Cancel</button>
+      <button class="btn btn-accent btn-sm hidden" onclick="iwCommit()" id="iwGo">Import rows</button>
     </div>
   </div>
 </div>
@@ -1956,7 +2159,7 @@ function defaultState(){
     areaTypes:[{id:'office',name:'Open office'},{id:'private',name:'Private office'},{id:'conference',name:'Conference'},{id:'reception',name:'Reception'},{id:'hallway',name:'Hallway'},{id:'lobby',name:'Lobby'},{id:'restroom',name:'Restroom'},{id:'kitchen',name:'Kitchen/break'},{id:'warehouse',name:'Warehouse'},{id:'stairwell',name:'Stairwell'},{id:'medical',name:'Medical'},{id:'classroom',name:'Classroom'},{id:'retail',name:'Retail'},{id:'other',name:'Other'}],
     tasks:[{id:1,name:'Vacuum carpets',min:8},{id:2,name:'Mop hard floors',min:10},{id:3,name:'Dust horizontal surfaces',min:6},{id:4,name:'Empty trash',min:5},{id:5,name:'Disinfect touchpoints',min:7},{id:6,name:'Restock paper / soap',min:4},{id:7,name:'Clean restrooms',min:15},{id:8,name:'Spot-clean glass',min:5},{id:9,name:'Wipe kitchen / breakroom',min:8},{id:10,name:'Sweep entrances',min:3}],
     customers:[],properties:[],quotes:[],
-    users:[{id:1,name:'Jane Doe',email:'jane.doe@summitcleaning.com',role:'admin',lastActive:'Just now'},{id:2,name:'Carlos Mendez',email:'carlos@summitcleaning.com',role:'estimator',lastActive:'2h ago'},{id:3,name:'Priya Shah',email:'priya@summitcleaning.com',role:'sales',lastActive:'Yesterday'}],
+    users:[{id:1,name:'Jane Doe',email:'jane.doe@summitcleaning.com',role:'admin',lastActive:'Just now'},{id:2,name:'Carlos Mendez',email:'carlos@summitcleaning.com',role:'estimator',lastActive:'2h ago'},{id:3,name:'Priya Shah',email:'priya.shah@summitcleaning.com',role:'sales',lastActive:'Yesterday'}],
     me:{name:'Jane Doe',email:'jane.doe@summitcleaning.com',role:'admin'},
     activity:[],
     // P1 #6 — add-ons (id, name, method, value, enabled)
@@ -1972,6 +2175,59 @@ function defaultState(){
 }
 function loadState(){ try{const r=localStorage.getItem(STORE_KEY);if(r) return JSON.parse(r);}catch(e){} return defaultState(); }
 function saveState(){ try{localStorage.setItem(STORE_KEY, JSON.stringify(state));}catch(e){} }
+
+/* ====================================================================
+   DB-AWARE STATE PERSISTENCE
+   ==================================================================== */
+async function loadStateFromDb(){
+  if(window.__cleanbid_is_demo){
+    return;
+  }
+  if(window.__cleanbid_db && window.__cleanbid_db.loadState){
+    const saved = await window.__cleanbid_db.loadState();
+    if(saved && Object.keys(saved).length > 0){
+      Object.assign(state, saved);
+    }
+  }
+  setCurrentUser();
+}
+function setCurrentUser(){
+  const user = window.__cleanbid_user;
+  const workspace = window.__cleanbid_current_workspace;
+  if(user){
+    state.me = {
+      id: user.id,
+      name: user.full_name || user.email,
+      email: user.email,
+      role: workspace ? workspace.role : 'estimator'
+    };
+  } else {
+    state.me = state.me || { name: 'User', email: '', role: 'estimator' };
+  }
+}
+async function saveStateToDb(){
+  if(window.__cleanbid_is_demo){
+    if(window.__cleanbid_db && window.__cleanbid_db.saveDemoState){
+      await window.__cleanbid_db.saveDemoState(state);
+    } else {
+      saveState();
+    }
+    return;
+  }
+  if(window.__cleanbid_db && window.__cleanbid_db.saveState){
+    try {
+      await window.__cleanbid_db.saveState(state);
+    } catch(e){
+      console.error('[CleanBid] Failed to save state to DB:', e);
+      const dbMode = window.__cleanbid_db.getDbMode ? window.__cleanbid_db.getDbMode() : null;
+      if (dbMode !== 'supabase') {
+        saveState();
+      }
+    }
+  } else {
+    saveState();
+  }
+}
 
 /* ====================================================================
    UNITS — canonical sq ft (display layer converts to m² if metric)
@@ -2010,18 +2266,26 @@ function fmtCurrency(v){
 /* ====================================================================
    AUTH / SEED
 ==================================================================== */
-function enterApp(loadDemo){
-  if(loadDemo) seedDemo();
+async function enterApp(loadDemo){
+  if(loadDemo){
+    seedDemo();
+  } else {
+    await loadStateFromDb();
+  }
   document.getElementById('view-login').classList.add('hidden');
   document.getElementById('view-app').classList.remove('hidden');
   document.body.classList.remove('no-scroll');
   bootApp();
 }
 function doLogout(){
-  document.getElementById('view-app').classList.add('hidden');
-  document.getElementById('view-login').classList.remove('hidden');
-  document.body.classList.add('no-scroll');
-  if(document.getElementById('searchResults')){ document.getElementById('searchResults').classList.remove('show'); }
+  if(window.__cleanbid_is_authenticated || window.__cleanbid_is_demo){
+    window.handleLogout();
+  } else {
+    document.getElementById('view-app').classList.add('hidden');
+    document.getElementById('view-login').classList.remove('hidden');
+    document.body.classList.add('no-scroll');
+    if(document.getElementById('searchResults')){ document.getElementById('searchResults').classList.remove('show'); }
+  }
 }
 
 function seedDemo(){
@@ -2058,7 +2322,7 @@ function seedDemo(){
     {avt:'JD',actor:'Jane',what:'created version 2 of',object:'Westbrook Tower',time:'5d ago'},
     {avt:'CM',actor:'Carlos',what:'added customer',object:'Cedar Ridge Schools',time:'1w ago'}
   ];
-  saveState();
+  saveStateToDb();
 }
 
 /* ====================================================================
@@ -2086,6 +2350,38 @@ function bootApp(){
 /* ====================================================================
    NAVIGATION
 ==================================================================== */
+document.body.addEventListener('click', function(e){
+  const navBtn = e.target.closest('[data-nav]');
+  if(navBtn){ goTo(navBtn.dataset.nav); }
+});
+
+let _skipBuilderReset = false;
+let _viewingQuoteId = null; // quote currently shown on the proposal page
+
+function resetBuilder(){
+  qb.areas = [];
+  qb.tasks = [];
+  qb.package = 'professional';
+  qb.profileId = 'std';
+  qb.propertyId = null;
+  qb.override = null;
+  qb.calc = null;
+  document.getElementById('qbCustomer').value = '';
+  document.getElementById('qbCompany').value = '';
+  document.getElementById('qbContact').value = '';
+  document.getElementById('qbEmail').value = '';
+  document.getElementById('qbPhone').value = '';
+  document.getElementById('qbPropName').value = '';
+  document.getElementById('qbPropAddr').value = '';
+  document.getElementById('qbSqft').value = '';
+  document.getElementById('qbFloors').value = '1';
+  document.getElementById('qbType').value = 'office';
+  document.getElementById('qbFreq').value = '5';
+  document.getElementById('qbNotes').value = '';
+  recalc();
+  updateSurveyActions();
+}
+
 function goTo(page){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(b=>b.classList.remove('active'));
@@ -2097,11 +2393,10 @@ function goTo(page){
   document.getElementById('crumbSection').textContent = secMap[page] || 'Workspace';
   document.getElementById('sidebar').classList.remove('m-open');
   window.scrollTo(0,0);
+  if(page === 'newquote' && !_skipBuilderReset){
+    resetBuilder();
+  }
 }
-document.body.addEventListener('click', function(e){
-  const navBtn = e.target.closest('[data-nav]');
-  if(navBtn){ goTo(navBtn.dataset.nav); }
-});
 
 // mobile sidebar drawer
 function toggleSidebar(){
@@ -2115,7 +2410,7 @@ function toggleSidebar(){
    PRICING ENGINE — deterministic
    reads from snapshot priceSnap if present (keeps historical accuracy)
 ==================================================================== */
-const qb = { areas:[], tasks:[], package:'professional', profileId:'std', calc:null, calcFromSnap:null };
+const qb = { areas:[], tasks:[], package:'professional', profileId:'std', propertyId:null, calc:null, calcFromSnap:null };
 
 function activePricing(){
   const profile = state.profiles.find(p=>p.id===qb.profileId);
@@ -2366,6 +2661,13 @@ function recalc(){
   if(hintEl){ hintEl.textContent = `Wage ${curSym()}${P.wage}/hr · ${P.burden}% burden · ${P.overhead}% overhead · ${P.margin}% target margin`; }
   // profile chip on top of calc
   renderAreas(); renderTasks(); renderAddons();
+  // P2-1: keep the mobile sticky price bar in sync (display-only mirror)
+  const mp = document.getElementById('mpMonthly');
+  if(mp){
+    document.getElementById('mpMonthly').textContent = fmtCurrency(qb.calc.finalMonthly);
+    document.getElementById('mpPkg').textContent = cap(qb.package);
+    document.getElementById('mpHours').textContent = hoursPerVisit.toFixed(1)+' hrs · '+cleaners+' cleaner'+(cleaners>1?'s':'');
+  }
 }
 
 function pickPkg(p){ qb.package = p; recalc(); }
@@ -2508,22 +2810,64 @@ function renderAreas(){
     <div class="area-chip">
       <div class="ac-name">${esc(a.name)}</div>
       <div class="ac-meta">${a.sqft.toLocaleString()} sq ft · ${(a.sqft/prod).toFixed(1)} hrs</div>
+      <button class="dup" onclick="duplicateArea(${a.id})" title="Duplicate area">❐</button>
       <button class="rm" onclick="removeArea(${a.id})">✕</button>
       <div class="ac-detail">
         <span>${cap(a.type)}</span><span>${esc(a.floor)}</span><span>${esc(a.diff)}</span><span>${a.freq}x/wk</span>
       </div>
     </div>`;
   }).join('');
+  updateSurveyActions();
 }
-function removeArea(id){ qb.areas = qb.areas.filter(a=>a.id!==id); recalc(); }
-function addChippedArea(type){
-  // quick-add with type + reasonable defaults
-  const t = {id:Date.now(),name:cap(type),sqft:5000,type:type,floor:'Mixed',diff:'Standard',freq:5};
-  qb.areas.push(t);
-  lastChipType = type;
-  // scroll user to fill sq ft
+function removeArea(id){ qb.areas = qb.areas.filter(a=>a.id!==id); recalc(); updateSurveyActions(); }
+function duplicateArea(id){
+  const src = qb.areas.find(a=>a.id===id);
+  if(!src) return;
+  const baseName = src.name.replace(/\s*\(Copy(\s*\d+)?\)\s*$/i, '').trim();
+  const existingCopies = qb.areas.filter(a => a.name.match(new RegExp('^' + escRegExp(baseName) + '\\s*\\(Copy', 'i'))).length;
+  const suffix = existingCopies > 0 ? ` (Copy ${existingCopies + 1})` : ' (Copy)';
+  const dup = JSON.parse(JSON.stringify(src));
+  dup.id = Date.now() + Math.random();
+  dup.name = baseName + suffix;
+  qb.areas.push(dup);
   recalc();
-  toast('Added '+cap(type)+' (default 5,000 sq ft — adjust below).', 'success');
+  updateSurveyActions();
+  toast('Duplicated "' + src.name + '"', 'success');
+}
+function escRegExp(string) {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+function updateSurveyActions(){
+  const btn = document.getElementById('clearSurveyBtn');
+  if(btn) btn.style.display = (qb.areas.length > 0 || qb.tasks.length > 0) ? 'inline-flex' : 'none';
+}
+function clearSurvey(){
+  const hasAreas = qb.areas.length > 0;
+  const hasTasks = qb.tasks.length > 0;
+  const parts = [];
+  if(hasAreas) parts.push('survey areas');
+  if(hasTasks) parts.push('ad-hoc tasks');
+  if(!parts.length) return;
+  if(!confirm('This will remove ' + parts.join(' and ') + ' from the current quote. Customer, property, and saved quotes will not be affected. Continue?')) return;
+  qb.areas = [];
+  qb.tasks = [];
+  recalc();
+  updateSurveyActions();
+  toast('Survey cleared.', 'success');
+}
+function addChippedArea(type){
+  // P0-4: quick-add must produce a REAL area. Prompt for sqft inline
+  // (no modal round-trip); cancel = no junk placeholder in the survey.
+  const label = cap(type) + ' — size?';
+  const raw = prompt(label, '5000');
+  if(raw === null) return;                       // user cancelled — add nothing
+  const sqft = parseFloat(String(raw).replace(/[^0-9.]/g,''));
+  if(!(sqft > 0)){ toast('Enter a valid square footage.','warn'); return; }
+  qb.areas.push({id:Date.now(),name:cap(type),sqft,type:type,floor:'Mixed',diff:'Standard',freq:5});
+  lastChipType = type;
+  recalc();
+  updateSurveyActions();
+  toast('Added '+cap(type)+' · '+Math.round(sqft).toLocaleString()+' sq ft.', 'success');
 }
 document.querySelectorAll('.type-chip').forEach(b=>b.addEventListener('click', ()=>addChippedArea(b.dataset.type)));
 
@@ -2539,8 +2883,9 @@ function renderTasks(){
       <div class="ac-meta">+${t.min} min/visit</div>
       <button class="rm" onclick="removeTask(${t.id})">✕</button>
     </div>`).join('');
+  updateSurveyActions();
 }
-function removeTask(id){ qb.tasks = qb.tasks.filter(t=>t.id!==id); recalc(); }
+function removeTask(id){ qb.tasks = qb.tasks.filter(t=>t.id!==id); recalc(); updateSurveyActions(); }
 
 function renderAddons(){
   const host = document.getElementById('addonsHost');
@@ -2593,7 +2938,7 @@ function openAddonCfgRender(){
 }
 function removeAddon(id){
   state.addons = state.addons.filter(a=>a.id!==id);
-  saveState();
+  saveStateToDb();
   openAddonCfgRender();
   toast('Add-on removed.');
 }
@@ -2602,7 +2947,7 @@ function addNewAddon(){
   const method = document.getElementById('newAddonMethod').value;
   const value = parseFloat(document.getElementById('newAddonValue').value) || 0;
   state.addons.push({ id:'ad-'+Date.now(), name, method, value, enabled:true });
-  saveState();
+  saveStateToDb();
   toast('Add-on added.');
   openAddonCfgRender();
 }
@@ -2620,7 +2965,7 @@ function saveAddons(){
     else if(act==='method') byId[id].method = el.value;
     else if(act==='value') byId[id].value = parseFloat(el.value) || 0;
   });
-  saveState();
+  saveStateToDb();
   closeModal('addAddonsModal');
   recalc();
   toast('Add-ons saved.');
@@ -2635,6 +2980,7 @@ function commitArea(){
   closeModal('addAreaModal');
   document.getElementById('newAreaName').value=''; document.getElementById('newAreaSqft').value='';
   recalc();
+  updateSurveyActions();
   toast('Added "'+name+'".');
 }
 function openAddTask(){ openModal('addTaskModal'); }
@@ -2645,6 +2991,7 @@ function commitTask(){
   closeModal('addTaskModal');
   document.getElementById('newTaskName').value=''; document.getElementById('newTaskMin').value='';
   recalc();
+  updateSurveyActions();
 }
 
 /* ====================================================================
@@ -2671,6 +3018,25 @@ function openCust(){
   ['custCompany','custContact','custEmail','custPhone','custAddress','custNotes'].forEach(id=>document.getElementById(id).value='');
   openModal('customerModal');
 }
+function openQuickCust(){
+  document.getElementById('qcCompany').value='';
+  document.getElementById('qcPhone').value='';
+  openModal('quickCustModal');
+}
+function commitQuickCust(){
+  const company = document.getElementById('qcCompany').value.trim();
+  if(!company){ toast('Company name is required.','warn'); return; }
+  const phone = document.getElementById('qcPhone').value.trim();
+  const c = { id: Date.now(), company, contact:'', email:'', phone, address:'', notes:'', lastActivity:'Just now' };
+  state.customers.push(c);
+  saveStateToDb();
+  populateCustomerDD();
+  document.getElementById('qbCustomer').value = c.id;
+  loadCustomer();
+  renderCustomers();
+  closeModal('quickCustModal');
+  toast('Customer created and selected.', 'success');
+}
 function commitCustomer(){
   const id = document.getElementById('custId').value || Date.now();
   const c = state.customers.find(x=>x.id==id) || {};
@@ -2683,7 +3049,7 @@ function commitCustomer(){
   c.notes = document.getElementById('custNotes').value.trim();
   c.lastActivity = 'Just now';
   if(!state.customers.find(x=>x.id==c.id)) state.customers.push(c);
-  saveState();
+  saveStateToDb();
   closeModal('customerModal');
   populateCustomerDD();
   renderCustomers();
@@ -2691,14 +3057,385 @@ function commitCustomer(){
 }
 function renderCustomers(){
   const host = document.getElementById('cList');
-  if(state.customers.length===0){ host.innerHTML='<tr><td colspan="7"><div class="empty"><div class="ei">◔</div><div class="et">No customers yet.</div><div class="es">Add a customer or build a quote — they\'ll show up here.</div></div></td></tr>'; return; }
+  if(state.customers.length===0){ host.innerHTML='<tr><td colspan="7"><div class="empty"><div class="ei">◔</div><div class="et">No customers yet.</div><div class="es">Add a customer, build a quote — or import your list from Excel.</div></div></td></tr>'; document.getElementById('custDetail').innerHTML=''; return; }
   host.innerHTML = state.customers.map(c=>{
     const props = state.properties.filter(p=>p.customerId===c.id).length;
     const qs = state.quotes.filter(q=>q.customerId===c.id);
     const pipe = qs.filter(q=>['sent','viewed','negotiation'].includes(q.status)).reduce((s,q)=>s+q.monthly*12,0);
     const won = qs.filter(q=>q.status==='won').reduce((s,q)=>s+q.annual,0);
-    return `<tr><td><strong>${esc(c.company)}</strong></td><td>${esc(c.contact||'—')}</td><td>${props}</td><td>${qs.length}</td><td class="tabnum">${fmtCurrency(pipe)}</td><td class="tabnum">${fmtCurrency(won)}</td><td>${esc(c.lastActivity||'—')}</td></tr>`;
+    return `<tr style="cursor:pointer" onclick="showCustomerDetail(${c.id})"><td><strong>${esc(c.company)}</strong></td><td>${esc(c.contact||'—')}</td><td>${props}</td><td>${qs.length}</td><td class="tabnum">${fmtCurrency(pipe)}</td><td class="tabnum">${fmtCurrency(won)}</td><td>${esc(c.lastActivity||'—')}</td></tr>`;
   }).join('');
+}
+function showCustomerDetail(id){
+  const c = state.customers.find(x=>x.id===id);
+  if(!c) return;
+  const props = state.properties.filter(p=>p.customerId===id);
+  const qs = state.quotes.filter(q=>q.customerId===id).sort((a,b)=>quoteDate(b)-quoteDate(a));
+  const host = document.getElementById('custDetail');
+  let html = `<div style="background:var(--paper-2);border:1px solid var(--line);border-radius:12px;padding:20px;margin-top:16px">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px">
+      <div>
+        <h3 style="font-family:'Fraunces',serif;font-style:italic;font-size:20px;color:var(--ink);margin-bottom:4px">${esc(c.company)}</h3>
+        <div style="font-size:13px;color:var(--text-muted)">${esc(c.contact||'—')} · ${esc(c.email||'—')} · ${esc(c.phone||'—')}</div>
+        ${c.address?`<div style="font-size:12px;color:var(--text-muted);margin-top:4px">${esc(c.address)}</div>`:''}
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="document.getElementById('custDetail').innerHTML=''">✕ Close</button>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:16px">
+      <button class="btn btn-accent btn-sm" onclick="document.getElementById('custDetail').innerHTML='';openQuickCust();goTo('newquote')">+ New quote for this customer</button>
+    </div>
+    <h4 style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--text-muted);font-weight:700;margin-bottom:10px">Properties (${props.length})</h4>`;
+  if(props.length===0){
+    html += `<div class="empty" style="padding:12px 0"><div class="es">No properties yet. Create a quote to add one.</div></div>`;
+  } else {
+    html += `<div style="display:flex;flex-direction:column;gap:8px">` + props.map(p=>{
+      const pq = qs.filter(q=>q.propertyId===p.id);
+      const latest = pq[0];
+      return `<div style="display:flex;justify-content:space-between;align-items:center;padding:12px 14px;background:var(--paper-3);border:1px solid var(--line-soft);border-radius:8px">
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:600;font-size:13px">${esc(p.name)}</div>
+          <div style="font-size:11px;color:var(--text-muted)">${cap(p.type)} · ${p.sqft?p.sqft.toLocaleString()+' sq ft':'—'} · ${p.floors||1} floor${p.floors>1?'s':''}</div>
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0">
+          <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();viewProperty(${p.id})">History</button>
+          <button class="btn btn-accent btn-sm" onclick="event.stopPropagation();loadProp(${p.id})">Quote →</button>
+        </div>
+      </div>`;
+    }).join('') + `</div>`;
+  }
+  html += `</div>`;
+  host.innerHTML = html;
+}
+
+/* ====================================================================
+   EXCEL / CSV IMPORT WIZARD
+   Customers + properties + optional rate sheet. No dependencies for
+   CSV/TSV; .xlsx loads SheetJS from CDN on demand (falls back to a
+   "save as CSV" hint if offline).
+==================================================================== */
+const IW_FIELDS = [
+  {key:'company',   label:'Company',        required:true,  aliases:['company','company name','customer','customer name','client','client name','account','business','business name','name']},
+  {key:'contact',   label:'Contact',        required:false, aliases:['contact','contact name','person','attn','manager','primary contact']},
+  {key:'email',     label:'Email',          required:false, aliases:['email','e-mail','email address','contact email']},
+  {key:'phone',     label:'Phone',          required:false, aliases:['phone','phone number','tel','telephone','mobile','cell','contact number']},
+  {key:'address',   label:'Address',        required:false, aliases:['address','street','street address','location address','mailing address','addr']},
+  {key:'notes',     label:'Notes',          required:false, aliases:['notes','note','comments','comment','description','details']},
+  {key:'propName',  label:'Property',       required:false, aliases:['property','property name','building','building name','site','site name','location name']},
+  {key:'type',      label:'Type',           required:false, aliases:['type','building type','property type','facility type','space type']},
+  {key:'sqft',      label:'Sq Ft',          required:false, aliases:['sqft','sq ft','square feet','square foot','size','area','floor area','sq. ft.']},
+  {key:'floors',    label:'Floors',         required:false, aliases:['floors','floor','floor count','number of floors','stories']}
+];
+// Rate-sheet fields: recognized only when the whole file is one rate card.
+const IW_RATE_FIELDS = [
+  {key:'rateWage',    label:'Wage ($/hr)',         match:['wage','hourly wage','base wage','hourly rate','labor rate','rate/hr','pay rate']},
+  {key:'rateBurden',  label:'Burden (%)',          match:['burden','burden %','payroll burden','payroll tax','tax burden']},
+  {key:'rateOverhead',label:'Overhead (%)',        match:['overhead','overhead %','oh','g&a','admin %']},
+  {key:'rateMargin',  label:'Margin (%)',          match:['margin','margin %','profit','profit margin','gross margin']},
+  {key:'rateMin',     label:'Minimum price ($/mo)',match:['minimum','min price','minimum price','monthly minimum','floor price']}
+];
+let iwData = null; // {headers, rows, mapping} or {isRateSheet:true, rateValues}
+
+function openImportWizard(){
+  document.getElementById('iwStep1').classList.remove('hidden');
+  document.getElementById('iwStep2').classList.add('hidden');
+  document.getElementById('iwStep3').classList.add('hidden');
+  document.getElementById('iwGo').classList.add('hidden');
+  document.getElementById('iwCancel').textContent = 'Cancel';
+  document.getElementById('iwFile').value = '';
+  iwData = null;
+  openModal('importWizard');
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const inp = document.getElementById('iwFile');
+  if(inp) inp.addEventListener('change', e => {
+    const f = e.target.files && e.target.files[0];
+    if(f) iwReadFile(f);
+  });
+});
+
+function iwReadFile(file){
+  const name = (file.name||'').toLowerCase();
+  if(/\.(xlsx|xls)$/.test(name)){
+    iwLoadXlsx(file);
+  } else {
+    const reader = new FileReader();
+    reader.onload = ev => iwParseTable(iwParseDelimited(String(ev.target.result)), file.name);
+    reader.onerror = () => toast('Could not read that file.', 'warn');
+    reader.readAsText(file);
+  }
+}
+
+function iwLoadXlsx(file){
+  if(window.XLSX){ iwXlsxReady(file); return; }
+  const s = document.createElement('script');
+  s.src = 'https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js';
+  s.onload = () => iwXlsxReady(file);
+  s.onerror = () => toast('Excel reader could not load (offline?). Save the sheet as CSV and try again.', 'warn');
+  document.head.appendChild(s);
+}
+function iwXlsxReady(file){
+  try{
+    const reader = new FileReader();
+    reader.onload = ev => {
+      try{
+        const wb = XLSX.read(ev.target.result, {type:'array'});
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const grid = XLSX.utils.sheet_to_json(ws, {header:1, raw:true, defval:''});
+        iwParseTable(grid, file.name);
+      }catch(err){ console.error('[Import] xlsx parse:', err); toast('Could not parse that workbook.', 'warn'); }
+    };
+    reader.readAsArrayBuffer(file);
+  }catch(err){ console.error('[Import] xlsx read:', err); toast('Could not read that workbook.', 'warn'); }
+}
+
+// Delimiter-sniffing CSV/TSV parser with quoted-field support (RFC-4180-ish). No deps.
+function iwParseDelimited(text){
+  text = text.replace(/^\uFEFF/, ''); // strip BOM
+  const firstLine = (text.split(/\r?\n/).find(l=>l.trim()) || '');
+  const commas = (firstLine.match(/,/g)||[]).length, tabs = (firstLine.match(/\t/g)||[]).length;
+  const delim = tabs > commas ? '\t' : ',';
+  const rows = [];
+  let row = [], field = '', inQ = false;
+  for(let i=0;i<text.length;i++){
+    const ch = text[i];
+    if(inQ){
+      if(ch==='"'){ if(text[i+1]==='"'){ field+='"'; i++; } else inQ=false; }
+      else field += ch;
+    } else if(ch==='"'){ inQ=true; }
+    else if(ch===delim){ row.push(field); field=''; }
+    else if(ch==='\n'){ row.push(field); rows.push(row); row=[]; field=''; }
+    else if(ch==='\r'){ /* skip */ }
+    else field += ch;
+  }
+  if(field!=='' || row.length){ row.push(field); rows.push(row); }
+  return rows.filter(r => r.some(c => String(c).trim()!==''));
+}
+
+function iwNorm(s){ return String(s==null?'':s).toLowerCase().replace(/[^a-z0-9%$&/ ]+/g,' ').replace(/\s+/g,' ').trim(); }
+
+function iwGuessField(header){
+  const h = iwNorm(header);
+  if(!h) return '';
+  for(const f of IW_FIELDS){
+    if(f.aliases.some(a => a === h)) return f.key;
+  }
+  for(const f of IW_FIELDS){
+    if(f.aliases.some(a => h.startsWith(a))) return f.key;
+  }
+  return '';
+}
+
+function iwParseTable(grid, filename){
+  if(!grid || grid.length < 1){ toast('That file appears to be empty.', 'warn'); return; }
+  let headers = grid[0].map(h => String(h).trim());
+  let body = grid.slice(1);
+  // "Label,Value" pair-per-row layout = rate card
+  if(headers.length <= 2 && body.length >= 2){
+    const rateVals = {}; let hits = 0;
+    body.forEach(r => {
+      const label = iwNorm(r[0]);
+      IW_RATE_FIELDS.forEach(rf => {
+        if(rf.match.some(m => m === label) && rateVals[rf.key] === undefined){
+          const v = parseFloat(String(r[1]).replace(/[$,\s]/g,''));
+          if(!isNaN(v)){ rateVals[rf.key] = v; hits++; }
+        }
+      });
+    });
+    if(hits >= 2){
+      iwShowRateSheet(rateVals);
+      return;
+    }
+  }
+  const mapping = headers.map(h => iwGuessField(h));
+  // de-dupe mappings (keep first occurrence)
+  const seen = {};
+  mapping.forEach((m,i) => { if(m && seen[m]){ mapping[i]=''; } else if(m){ seen[m]=1; } });
+  if(mapping.filter(Boolean).length === 0){
+    toast(`Couldn't recognize any columns in "${filename}". Rename a header to e.g. "Company" and re-export.`, 'warn');
+    return;
+  }
+  iwData = { headers, rows: body, mapping };
+  iwRenderMap();
+  iwRenderPreview();
+  document.getElementById('iwStep1').classList.add('hidden');
+  document.getElementById('iwStep2').classList.remove('hidden');
+  document.getElementById('iwGo').classList.remove('hidden');
+  document.getElementById('iwGo').textContent = `Import ${body.length} row${body.length===1?'':'s'}`;
+}
+
+function iwShowRateSheet(vals){
+  iwData = { isRateSheet:true, rateValues:vals };
+  const bits = [];
+  if(vals.rateWage != null)     bits.push(`Wage <strong>$${vals.rateWage}</strong>/hr`);
+  if(vals.rateBurden != null)   bits.push(`Burden <strong>${vals.rateBurden}%</strong>`);
+  if(vals.rateOverhead != null) bits.push(`Overhead <strong>${vals.rateOverhead}%</strong>`);
+  if(vals.rateMargin != null)   bits.push(`Margin <strong>${vals.rateMargin}%</strong>`);
+  if(vals.rateMin != null)      bits.push(`Monthly minimum <strong>$${Math.round(vals.rateMin)}</strong>`);
+  document.getElementById('iwRateBanner').innerHTML =
+    `<div style="background:var(--paper-3);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:12px">
+      <div style="font-weight:700;font-size:13px;margin-bottom:4px">Rate sheet detected</div>
+      <div style="font-size:12px;color:var(--text-muted);line-height:1.7">${bits.join('<br>')}</div>
+      <div class="hint" style="margin-top:8px">These will be applied to your default pricing profile.</div>
+    </div>`;
+  document.getElementById('iwGo').textContent = 'Apply rates';
+  document.getElementById('iwGo').classList.remove('hidden');
+  document.getElementById('iwStep1').classList.add('hidden');
+  document.getElementById('iwStep2').classList.remove('hidden');
+}
+
+function iwRenderMap(){
+  const host = document.getElementById('iwMap');
+  host.innerHTML = iwData.headers.map((h,i)=>{
+    const cur = iwData.mapping[i] || '';
+    const opts = ['<option value="">— Ignore column —</option>']
+      .concat(IW_FIELDS.map(f=>`<option value="${f.key}" ${cur===f.key?'selected':''}>${f.label}</option>`)).join('');
+    return `<div style="display:flex;align-items:center;gap:10px">
+      <div style="flex:1;font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(h)}">${esc(h||'(unnamed column)')}</div>
+      <div style="color:var(--text-muted)">→</div>
+      <select class="select" style="flex:1;padding:6px 8px;font-size:12px" data-iwcol="${i}" onchange="iwRemap(this)">${opts}</select>
+    </div>`;
+  }).join('');
+}
+function iwRemap(sel){
+  iwData.mapping[+sel.dataset.iwcol] = sel.value;
+  iwRenderPreview();
+}
+
+function iwRenderPreview(){
+  const head = document.getElementById('iwPrevHead');
+  const body = document.getElementById('iwPrevBody');
+  const cols = iwData.headers.map((h,i)=>({h, idx:i, key:iwData.mapping[i]}));
+  head.innerHTML = cols.map(c=>{
+    if(!c.key) return `<th style="opacity:.45">${esc(c.h||'—')}</th>`;
+    const f = IW_FIELDS.find(x=>x.key===c.key);
+    return `<th>${esc(f?f.label:c.key)}</th>`;
+  }).join('');
+  body.innerHTML = iwData.rows.slice(0,8).map(r =>
+    '<tr>' + cols.map(c=>`<td>${esc(c.key ? iwCell(r, c.idx) : '')}</td>`).join('') + '</tr>'
+  ).join('');
+}
+
+function iwCell(row, idx){ return idx!=null && idx >= 0 && row[idx]!=undefined ? String(row[idx]).trim() : ''; }
+
+function iwCommit(){
+  try{
+    if(iwData && iwData.isRateSheet){ iwCommitRates(); return; }
+    if(!iwData) return;
+    const policy = document.getElementById('iwDupPolicy').value;
+    const map = iwData.mapping;
+    const idxOf = {}; IW_FIELDS.forEach(f => { idxOf[f.key] = map.indexOf(f.key); });
+
+    let addedC=0, mergedC=0, skipped=0, addedP=0, noName=0;
+
+    iwData.rows.forEach(r => {
+      const company = iwCell(r, idxOf.company);
+      if(!company){ noName++; return; }
+      const norm = company.toLowerCase().replace(/[^a-z0-9]+/g,'');
+      let cust = state.customers.find(x => (x.company||'').toLowerCase().replace(/[^a-z0-9]+/g,'') === norm);
+
+      if(cust && policy === 'skip'){ skipped++; return; }
+
+      if(!cust){
+        cust = {
+          id: Date.now() + addedC,
+          company,
+          contact:  iwCell(r, idxOf.contact),
+          email:    iwCell(r, idxOf.email),
+          phone:    iwCell(r, idxOf.phone),
+          address:  iwCell(r, idxOf.address),
+          notes:    iwCell(r, idxOf.notes),
+          lastActivity: 'Imported'
+        };
+        state.customers.push(cust);
+        addedC++;
+      } else if(policy === 'merge'){
+        ['contact','email','phone','address','notes'].forEach(k => {
+          const v = iwCell(r, idxOf[k]);
+          if(v && !cust[k]) cust[k] = v;
+        });
+        mergedC++;
+      }
+
+      const pn = iwCell(r, idxOf.propName);
+      const sqft = parseInt(String(iwCell(r, idxOf.sqft)).replace(/[^0-9]/g,''), 10);
+      const floors = parseInt(String(iwCell(r, idxOf.floors)).replace(/[^0-9]/g,''), 10);
+      if(pn || !isNaN(sqft)){
+        const typeRaw = iwNorm(iwCell(r, idxOf.type));
+        const known = state.areaTypes.find(t => t.name.toLowerCase() === typeRaw || t.id === typeRaw);
+        state.properties.push({
+          id: Date.now() + 100000 + addedP,
+          customerId: cust.id,
+          name: pn || (company + ' — main site'),
+          type: known ? known.id : 'office',
+          sqft: isNaN(sqft) ? null : sqft,
+          floors: isNaN(floors) ? null : floors,
+          quoteCount: 0,
+          lastQuoted: null
+        });
+        addedP++;
+      }
+    });
+
+    saveStateToDb();
+    populateCustomerDD();
+    renderCustomers();
+    renderProperties();
+
+    const parts = [];
+    if(addedC) parts.push(`<strong>${addedC}</strong> customer${addedC===1?'':'s'} added`);
+    if(mergedC) parts.push(`<strong>${mergedC}</strong> updated from your file`);
+    if(addedP) parts.push(`<strong>${addedP}</strong> propert${addedP===1?'y':'ies'} saved`);
+    if(skipped) parts.push(`${skipped} duplicate row${skipped===1?'':'s'} skipped`);
+    if(noName) parts.push(`${noName} row${noName===1?'':'s'} had no company name and were ignored`);
+
+    document.getElementById('iwStep2').classList.add('hidden');
+    const done = document.getElementById('iwStep3');
+    done.classList.remove('hidden');
+    done.innerHTML = `<div style="text-align:center;padding:18px 6px">
+      <div style="font-size:34px;line-height:1">✓</div>
+      <h3 style="font-family:'Fraunces',serif;font-style:italic;color:var(--ink);margin:10px 0 6px">Import complete</h3>
+      <div style="font-size:13px;color:var(--text-muted);line-height:1.8">${parts.join('<br>') || 'Nothing needed importing.'}</div>
+    </div>`;
+    document.getElementById('iwGo').classList.add('hidden');
+    document.getElementById('iwCancel').textContent = 'Done';
+    state.activity.unshift({avt:(state.me&&state.me.name?state.me.name.slice(0,2).toUpperCase():'ME'), actor:(state.me&&state.me.name)||'You', what:'imported customers from spreadsheet', object:'', time:'just now'});
+    toast('Import complete.');
+    iwData = null;
+  }catch(err){
+    console.error('[Import]', err);
+    toast('Import failed: ' + err.message, 'warn');
+  }
+}
+
+function iwCommitRates(){
+  const v = iwData.rateValues;
+  if(v.rateWage != null)     state.pricing.wage = v.rateWage;
+  if(v.rateBurden != null)   state.pricing.burden = v.rateBurden;
+  if(v.rateOverhead != null) state.pricing.overhead = v.rateOverhead;
+  if(v.rateMargin != null)   state.pricing.margin = v.rateMargin;
+  if(v.rateMin != null)      state.pricing.minPrice = v.rateMin;
+  if(state.profiles && state.profiles[0]){
+    const p = state.profiles[0];
+    if(v.rateWage != null) p.wage = v.rateWage;
+    if(v.rateBurden != null) p.burden = v.rateBurden;
+    if(v.rateOverhead != null) p.overhead = v.rateOverhead;
+    if(v.rateMargin != null) p.margin = v.rateMargin;
+  }
+  saveStateToDb();
+  if(typeof recalcAll === 'function') recalcAll(); else if(typeof recalc === 'function') recalc();
+  document.getElementById('iwStep2').classList.add('hidden');
+  const done = document.getElementById('iwStep3');
+  done.classList.remove('hidden');
+  done.innerHTML = `<div style="text-align:center;padding:18px 6px">
+    <div style="font-size:34px;line-height:1">✓</div>
+    <h3 style="font-family:'Fraunces',serif;font-style:italic;color:var(--ink);margin:10px 0 6px">Rates applied</h3>
+    <div style="font-size:13px;color:var(--text-muted)">Your default pricing profile now uses the imported rates.</div>
+  </div>`;
+  document.getElementById('iwGo').classList.add('hidden');
+  document.getElementById('iwCancel').textContent = 'Done';
+  toast('Pricing rates updated from rate sheet.');
+  iwData = null;
 }
 
 /* ====================================================================
@@ -2755,6 +3492,9 @@ function viewProperty(id){
 function loadProp(id){
   const p = state.properties.find(x=>x.id===id);
   if(!p) return;
+  qb.areas = [];
+  qb.tasks = [];
+  qb.propertyId = p.id;
   qb.override = null; // fresh quote from property template — no inherited override
   document.getElementById('qbCustomer').value = p.customerId;
   loadCustomer();
@@ -2764,7 +3504,9 @@ function loadProp(id){
   document.getElementById('qbFloors').value = p.floors||1;
   document.getElementById('qbType').value = p.type||'office';
   recalc();
+  _skipBuilderReset = true;
   goTo('newquote');
+  _skipBuilderReset = false;
   toast('Loaded '+p.name);
 }
 
@@ -2780,7 +3522,7 @@ function renderQuotes(){
     const verCount = (q.versions||[]).length;
     const verLabel = verCount>1?`v${q.version} of ${verCount}`:'v1';
     const fu = q.followup ? formatDateChip(q.followup) : '—';
-    const verPicker = verCount>1 ? `<select class="select" style="font-size:11px;padding:4px 6px;width:auto" onchange="event.stopPropagation();openQuoteVersion(${escJs(q.id)},this.value);this.value='${q.version}'">${(q.versions||[]).map(v=>`<option value="${v.v}" ${v.v===q.version?'selected':''}>v${v.v} · ${fmtCurrency(v.total)}</option>`).join('')}</select>` : `<span class="chip">v${q.version}</span>`;
+    const verPicker = verCount>1 ? `<select class="select" style="font-size:11px;padding:4px 6px;width:auto" onchange="event.stopPropagation();openQuoteVersion(${escJs(q.id)},this.value)">${(q.versions||[]).map(v=>`<option value="${v.v}" ${v.v===q.version?'selected':''}>v${v.v} · ${fmtCurrency(v.total)}</option>`).join('')}</select>` : `<span class="chip">v${q.version}</span>`;
     return `
     <tr style="cursor:pointer" onclick="openQuote(${escJs(q.id)})">
       <td><strong>${esc(q.propertyName)}</strong></td>
@@ -2838,25 +3580,14 @@ function commitStatus(){
   if(next==='lost') q.lostReason = lr;
   q.modified = 'Just now';
   q.modifiedIso = new Date().toISOString();
-  // bump version counter to reflect change
-  if(next==='won'||next==='lost'){
-    q.version = (q.versions||[]).length + 1;
-    (q.versions = q.versions || []).push({v:q.version, total:q.monthly, date:'Just now', monthly:q.monthly, annual:q.annual, cleaners:q.cleaners, hoursPerVisit:q.hoursPerVisit, profileId:q.profileId});
-  }
+  // P2-3: won/lost is a SALES outcome, not a pricing revision. versions[]
+  // records what was priced, quoted and sent — never touch it here.
   state.activity.unshift({avt:'JD',actor:'Jane',what:'set '+next,object:q.propertyName,time:'just now'});
-  saveState();
+  saveStateToDb();
   closeModal('statusModal');
   renderQuotes();
   renderDash();
   toast('Status updated to '+next);
-}
-
-function openQuoteVersion(qid, ver){
-  const q = state.quotes.find(x=>x.id===qid);
-  if(!q) return;
-  // immutability: don't rewrite; just open the proposal and show "viewing v"+ver in header
-  openQuote(qid);
-  // Note on proposal is added by renderProposal from `viewingVersion`
 }
 
 /* ====================================================================
@@ -2879,18 +3610,55 @@ function nextQuoteId(){
   return 'Q-' + state._quoteSeq;
 }
 
+/* ---------------------------------------------------------------------
+   PROPERTY RESOLUTION (workflow P0-1)
+   Every saved quote must point at a real property record so history,
+   timelines and per-property analytics work. Find-or-create by
+   (name + customer) — never duplicates for the same building.
+--------------------------------------------------------------------- */
+function nextPropertyId(){
+  let maxId = 1000;
+  state.properties.forEach(p=>{ const n = parseInt(p.id,10); if(!isNaN(n) && n>maxId) maxId = n; });
+  return maxId + 1;
+}
+function findOrCreateProperty(customerId, name, address, type, sqft, floors){
+  const nm = (name||'').trim().toLowerCase();
+  if(!nm) return null;
+  let p = state.properties.find(x =>
+    (x.name||'').trim().toLowerCase()===nm &&
+    (customerId==null || x.customerId==null || String(x.customerId)===String(customerId)));
+  if(!p){
+    p = { id: nextPropertyId(), customerId: customerId||null, name: name.trim(),
+          address: address||'', type: type||'office', sqft: sqft||null, floors: floors||1,
+          quoteCount:0, lastQuoted:null };
+    state.properties.push(p);
+  }
+  // keep the reusable template current with the latest survey facts
+  if(address) p.address = address;
+  if(type) p.type = type;
+  if(sqft) p.sqft = sqft;
+  if(floors) p.floors = floors;
+  return p;
+}
+
 function saveDraft(){
   const sqft = parseFloat(document.getElementById('qbSqft').value)||0;
   if(!sqft){ toast('Enter total square footage first.','warn'); return; }
   markClean();
   const customerId = +document.getElementById('qbCustomer').value || null;
   const cust = state.customers.find(c=>c.id===customerId);
+  const propName = document.getElementById('qbPropName').value||'Untitled Property';
+  // P0-1: link the quote to a persisted property record (auto-created)
+  const prop = findOrCreateProperty(customerId, propName,
+    document.getElementById('qbPropAddr').value,
+    document.getElementById('qbType').value, sqft,
+    +document.getElementById('qbFloors').value||1);
   const P = activePricing();
   const q = {
     id: nextQuoteId(),
     customerId,
-    propertyId:null,
-    propertyName: document.getElementById('qbPropName').value||'Untitled Property',
+    propertyId: prop ? prop.id : null,
+    propertyName: propName,
     companyName: document.getElementById('qbCompany').value || (cust?cust.company:'—'),
     contact: document.getElementById('qbContact').value||'',
     email: document.getElementById('qbEmail').value||'',
@@ -2932,7 +3700,7 @@ function saveDraft(){
   };
   state.quotes.unshift(q);
   state.activity.unshift({avt:'JD',actor:'Jane',what:'saved draft of',object:q.propertyName,time:'just now'});
-  saveState();
+  saveStateToDb();
   renderQuotes();
   renderDash();
   toast('Draft saved.');
@@ -2945,6 +3713,7 @@ function duplicateLast(){
   qb.tasks = JSON.parse(JSON.stringify(last.tasks||[]));
   qb.package = last.package||'professional';
   qb.profileId = last.profileId||'std';
+  qb.propertyId = last.propertyId || null;
   qb.override = null; // overrides are judgment for a specific quote — start clean
   populateProfileDD();
   document.getElementById('qbCompany').value = last.companyName==='—'?'':last.companyName;
@@ -3000,8 +3769,14 @@ function commitRevise(){
   const newQ = state.quotes[0];
   if(!newQ) return;
   // Already a new draft — push it as latest version against an existing same-property quote
-  // Find existing quote with same propertyName & same companyName
-  const existing = state.quotes.slice(1).find(q=>q.propertyName===newQ.propertyName && q.companyName===newQ.companyName);
+  // Find existing quote by immutable propertyId first, fall back to name matching for legacy quotes
+  let existing = null;
+  if (newQ.propertyId) {
+    existing = state.quotes.slice(1).find(q => q.propertyId === newQ.propertyId);
+  }
+  if (!existing) {
+    existing = state.quotes.slice(1).find(q => q.propertyName === newQ.propertyName && q.companyName === newQ.companyName);
+  }
   if(existing){
     // P0-3: build a PROPER version object from the new draft.
     // Never push raw numbers into versions[] — every entry must be a valid
@@ -3050,7 +3825,7 @@ function commitRevise(){
   } else {
     toast('No matching prior quote found — saved as new quote.');
   }
-  saveState();
+  saveStateToDb();
   renderQuotes();
   renderDash();
 }
@@ -3179,22 +3954,30 @@ function generateProposal(){
   const sqft = parseFloat(document.getElementById('qbSqft').value)||0;
   if(!sqft){ toast('Add building details first.','warn'); return; }
   saveDraft();
+  // P0-3: a generated proposal is review-ready, not a raw draft.
+  const q = state.quotes[0];
+  if(q && q.status==='draft'){ q.status='ready'; saveStateToDb(); renderQuotes(); renderDash(); }
   markClean();
+  _viewingQuoteId = q ? q.id : null;
   goTo('proposals');
-  renderProposal(state.quotes[0]);
+  renderProposal(q);
 }
 function openQuote(id){
   const q = state.quotes.find(x=>x.id===id);
   if(!q) return;
+  _viewingQuoteId = id;
   goTo('proposals');
   renderProposal(q);
 }
+// P0-3: the proposal page always knows which quote it is showing.
+function currentQuoteId(){ return _viewingQuoteId || (state.quotes[0] && state.quotes[0].id); }
 /* P1-4: version picker support — ver is the selected version NUMBER.
    Passing it renders that historical snapshot instead of silently
    reopening the latest revision. */
 function openQuoteVersion(qid, ver){
   const q = state.quotes.find(x=>x.id===qid);
   if(!q) return;
+  _viewingQuoteId = qid;
   goTo('proposals');
   renderProposal(q, ver ? parseInt(ver,10) : null);
 }
@@ -3236,6 +4019,26 @@ function renderProposal(q, viewVer){
   const org = state.org;
   const cur = state.pricing.currency==='USD'?'$':state.pricing.currency==='GBP'?'£':state.pricing.currency==='EUR'?'€':'$';
   const pkg = cap(q.package||'essential');
+  // P1-6: proposal reflects real pipeline + dates, not placeholders.
+  const statusBadge = q.status ? `<span class="pbadge">${esc(q.status)}</span>` : '';
+  const effDate = (q.date && !/^(today|now|just now)$/i.test(String(q.date).trim()))
+    ? q.date
+    : new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'});
+  // Scope lines come from the actual survey when ad-hoc tasks were recorded.
+  const taskNames = (q.tasks||[]).map(t=>cap(t.name));
+  const includedItems = taskNames.length
+    ? taskNames.map(n=>`<li>&middot; ${esc(n)}</li>`).join('')
+    : [
+        'Vacuum carpets and mop hard floors',
+        'Dust horizontal surfaces, fixtures and ledges',
+        'Empty trash and replace liners throughout',
+        'Disinfect high-touch points (door handles, switches, rails)',
+        'Restock paper, soap and sanitary supplies',
+        'Clean and sanitize all restrooms',
+        'Spot-clean glass and partitions',
+        'Wipe kitchen and break room surfaces and appliances',
+        'Sweep entrances and lobby thresholds'
+      ].map(s=>`<li>&middot; ${s}</li>`).join('');
   const areas = q.areas||[];
   const hasAreas = areas.length>0;
   let areaRows = '';
@@ -3274,7 +4077,8 @@ function renderProposal(q, viewVer){
         <div class="pm">
           <div>Proposal ${esc(q.id)} · ${esc(disp.versionLabel)}</div>
           <div class="pno">${esc(q.profileName||'Standard')}</div>
-          <div style="margin-top:6px;text-transform:none;letter-spacing:.3px">${esc(q.date||'Today')}</div>
+          <div style="margin-top:6px;text-transform:none;letter-spacing:.3px">${esc(effDate)}</div>
+          ${statusBadge}
         </div>
       </div>
       <div class="p-body">
@@ -3330,16 +4134,26 @@ function renderProposal(q, viewVer){
         <div class="p-sec" style="margin-top:24px">
           <h2>What's included</h2>
           <ul style="font-size:13.5px;line-height:1.95;list-style:none">
-            <li>&middot; Vacuum carpets and mop hard floors</li>
-            <li>&middot; Dust horizontal surfaces, fixtures and ledges</li>
-            <li>&middot; Empty trash and replace liners throughout</li>
-            <li>&middot; Disinfect high-touch points (door handles, switches, rails)</li>
-            <li>&middot; Restock paper, soap and sanitary supplies</li>
-            <li>&middot; Clean and sanitize all restrooms</li>
-            <li>&middot; Spot-clean glass and partitions</li>
-            <li>&middot; Wipe kitchen and break room surfaces and appliances</li>
-            <li>&middot; Sweep entrances and lobby thresholds</li>
+            ${includedItems}
           </ul>
+        </div>
+        <div class="p-sec">
+          <h2>Assumptions &amp; basis of estimate</h2>
+          <div class="p-grid2" style="font-size:12.5px;line-height:1.9">
+            <div>
+              <div class="erow"><span>Pricing profile</span><b>${esc(q.profileName||'Standard')}</b></div>
+              <div class="erow"><span>Base frequency</span><b>${esc(freqLabel(q.frequency))}</b></div>
+              <div class="erow"><span>Staffing</span><b>${disp.cleaners} cleaner${disp.cleaners>1?'s':''} · ${disp.hoursPerVisit} hrs/visit</b></div>
+              <div class="erow"><span>Visits per month</span><b>${q.visitsPerMonth||'—'}</b></div>
+            </div>
+            <div>
+              <div class="erow"><span>Areas surveyed</span><b>${areas.length || 'Building total only'}</b></div>
+              <div class="erow"><span>Surveyed area</span><b>${hasAreas ? totalAreaSqft.toLocaleString()+' sq ft' : (q.sqft||0).toLocaleString()+' sq ft'}</b></div>
+              <div class="erow"><span>Package</span><b>${pkg}</b></div>
+              <div class="erow"><span>Quote valid</span><b>30 days from ${esc(effDate)}</b></div>
+            </div>
+          </div>
+          ${q.notes ? `<p class="hint" style="margin-top:10px"><b>Site notes:</b> ${esc(q.notes)}</p>` : ''}
         </div>
         <div class="p-sec">
           <h2>Quality standards</h2>
@@ -3424,14 +4238,32 @@ function freqLabel(f){
   return map[''+f] || (f+'x/week');
 }
 
-function openEmail(){
-  const q = state.quotes[0];
+function openEmail(qid){
+  // P0-3: send acts on the quote being viewed, not blindly quotes[0].
+  const q = (qid ? state.quotes.find(x=>x.id===qid) : null) || state.quotes[0];
+  if(!q) return;
   document.getElementById('emailTo').value = q&&q.email||'';
   document.getElementById('emailSubject').value = 'Cleaning proposal — '+(q?q.propertyName:'your property');
   document.getElementById('emailBody').value = 'Hi '+(q?(q.contact||'there'):'there')+',\n\nPlease find attached our commercial cleaning proposal for '+(q?q.propertyName:'your property')+'. Happy to walk through any questions.\n\nBest,\n'+state.org.name;
   openModal('emailModal');
 }
-function commitEmail(){ closeModal('emailModal'); toast('Email queued (demo).'); }
+function commitEmail(){
+  // P0-3: sending is a pipeline event — record it on the quote.
+  const q = state.quotes[0];
+  if(q){
+    if(['draft','ready'].includes(q.status)) q.status = 'sent';
+    if(!q.followup){
+      const d = new Date(); d.setDate(d.getDate()+7);
+      q.followup = d.toISOString().slice(0,10);
+    }
+    q.sentIso = new Date().toISOString();
+    state.activity.unshift({avt:'JD',actor:'Jane',what:'sent proposal for',object:q.propertyName,time:'just now'});
+    saveStateToDb();
+    renderQuotes(); renderDash();
+  }
+  closeModal('emailModal');
+  toast('Proposal marked as sent. Follow-up set in 7 days.', 'success');
+}
 
 /* ====================================================================
    AI NOTES — deterministic rewrite of survey notes
@@ -3659,7 +4491,7 @@ function savePricing(){
   state.pricing.units = document.getElementById('pcUnits').value;
   state.pricing.terms = document.getElementById('pcTerms').value;
   document.querySelectorAll('.pc-prod').forEach(el=>{ state.pricing.productivity[el.dataset.area] = +el.value||2000; });
-  saveState();
+  saveStateToDb();
   recalc();
   toast('Pricing defaults saved.');
 }
@@ -3726,7 +4558,7 @@ function commitProfile(){
   p.overhead = +document.getElementById('prOverhead').value||12;
   p.margin = +document.getElementById('prMargin').value||25;
   if(!state.profiles.find(x=>x.id===id)) state.profiles.push(p);
-  saveState();
+  saveStateToDb();
   closeModal('profileModal');
   renderProfiles();
   populateProfileDD();
@@ -3736,7 +4568,7 @@ function deleteProfile(id){
   if(id==='std'){ toast("Can't delete the Standard profile.",'warn'); return; }
   if(!confirm('Remove this profile?')) return;
   state.profiles = state.profiles.filter(x=>x.id!==id);
-  saveState();
+  saveStateToDb();
   renderProfiles();
   populateProfileDD();
   if(qb.profileId===id) qb.profileId='std';
@@ -3774,7 +4606,7 @@ function saveBranding(){
   state.org.footer = document.getElementById('brFooter').value;
   state.org.color = document.getElementById('brColor').value;
   state.org.trust = document.getElementById('brTrust').value;
-  saveState();
+  saveStateToDb();
   applyBranding();
   toast('Branding saved.');
 }
@@ -3802,11 +4634,11 @@ function renderTaskTypes(){
 function promptAdd(kind){
   if(kind==='area'){
     const n = prompt('New area type name?'); if(n && n.trim()){
-      const id='x_'+(Date.now()%10000); state.areaTypes.push({id,name:n.trim()}); state.pricing.productivity[id]=2000; saveState(); renderAreaTypes();
+      const id='x_'+(Date.now()%10000); state.areaTypes.push({id,name:n.trim()}); state.pricing.productivity[id]=2000; saveStateToDb(); renderAreaTypes();
     }
   } else {
     const n = prompt('New task name?'); if(n && n.trim()){
-      state.tasks.push({id:Date.now(),name:n.trim(),min:5}); saveState(); renderTaskTypes();
+      state.tasks.push({id:Date.now(),name:n.trim(),min:5}); saveStateToDb(); renderTaskTypes();
     }
   }
 }
@@ -3819,7 +4651,7 @@ function commitInvite(){
   const role = document.getElementById('ivRole').value;
   if(!name||!email){ toast('Name and email required.','warn'); return; }
   state.users.push({id:Date.now(),name,email,role,lastActive:'Never'});
-  saveState();
+  saveStateToDb();
   renderUsers();
   closeModal('inviteModal');
   toast('Invitation queued.');
@@ -3902,6 +4734,306 @@ function toast(msg, type){
 }
 
 console.log('[CleanBid] ready v2');
+
+// ====================================================================
+// AUTH / WORKSPACE MODULE INITIALIZATION
+// ====================================================================
+(function() {
+  // Expose globals for the module system
+  window.__cleanbid_state = window.__cleanbid_state || {};
+  window.__cleanbid_user = null;
+  window.__cleanbid_current_workspace = null;
+  window.__cleanbid_is_demo = false;
+  window.__cleanbid_is_authenticated = false;
+
+  // Auth UI functions
+  window.showAuthForms = function() {
+    document.getElementById('authForms').classList.remove('hidden');
+    document.getElementById('signinForm').classList.remove('hidden');
+    document.getElementById('signupForm').classList.add('hidden');
+    document.getElementById('authTitle').textContent = 'Sign In';
+  };
+
+  window.showSignup = function() {
+    document.getElementById('signinForm').classList.add('hidden');
+    document.getElementById('signupForm').classList.remove('hidden');
+    document.getElementById('authTitle').textContent = 'Create Account';
+  };
+
+  window.showSignin = function() {
+    document.getElementById('signupForm').classList.add('hidden');
+    document.getElementById('signinForm').classList.remove('hidden');
+    document.getElementById('authTitle').textContent = 'Sign In';
+  };
+
+  window.closeAuthForms = function() {
+    document.getElementById('authForms').classList.add('hidden');
+  };
+
+  window.showWorkspaceOnboarding = function() {
+    document.getElementById('workspaceOnboarding').classList.remove('hidden');
+    // Pre-fill from the pending signup company so the user just clicks Create
+    const input = document.getElementById('workspaceName');
+    if (input && !input.value && window.__cleanbid_pending_company) {
+      input.value = window.__cleanbid_pending_company;
+    }
+  };
+
+  window.closeWorkspaceOnboarding = function() {
+    document.getElementById('workspaceOnboarding').classList.add('hidden');
+  };
+
+  window.showWorkspacePicker = function(workspaces) {
+    const list = document.getElementById('workspaceList');
+    list.innerHTML = workspaces.map(ws => 
+      `<button class="btn btn-outline" style="width:100%;justify-content:flex-start;padding:12px 16px" onclick="selectWorkspace('${ws.id}')">
+        <div style="flex:1;text-align:left">
+          <div style="font-weight:600;font-size:14px">${esc(ws.name)}</div>
+          <div style="font-size:11px;color:var(--text-muted)">${esc(ws.role)}</div>
+        </div>
+      </button>`
+    ).join('');
+    document.getElementById('workspacePicker').classList.remove('hidden');
+  };
+
+  window.closeWorkspacePicker = function() {
+    document.getElementById('workspacePicker').classList.add('hidden');
+  };
+
+  window.selectWorkspace = async function(workspaceId) {
+    window.closeWorkspacePicker();
+    if (window.__cleanbid_db && window.__cleanbid_db.setCurrentWorkspaceId) {
+      window.__cleanbid_db.setCurrentWorkspaceId(workspaceId);
+    }
+    const ws = window.__cleanbid_current_workspace;
+    if (ws) {
+      window.__cleanbid_current_workspace = ws;
+    }
+    await enterApp(false);
+  };
+
+  // Demo mode - completely isolated
+  window.enterDemo = async function() {
+    console.log('[CleanBid] Entering demo mode (isolated)');
+    window.__cleanbid_is_demo = true;
+    window.__cleanbid_is_authenticated = false;
+    
+    // Load demo state from separate storage
+    const demoState = window.__cleanbid_db ? await window.__cleanbid_db.loadDemoState() : null;
+    if (demoState) {
+      Object.assign(state, demoState);
+    } else {
+      // First time demo - seed and save to demo storage
+      seedDemo();
+      if (window.__cleanbid_db) {
+        await window.__cleanbid_db.saveDemoState(state);
+      }
+    }
+    
+    // Set demo user
+    window.__cleanbid_user = {
+      id: 'demo-user',
+      email: 'demo@cleanbid.app',
+      full_name: 'Demo User',
+      role: 'admin',
+    };
+    
+    // Set demo workspace
+    window.__cleanbid_current_workspace = {
+      id: 'demo-workspace',
+      name: 'Demo Workspace',
+      role: 'admin',
+    };
+    
+    await enterApp(false);
+  };
+
+  // Auth handlers
+  window.handleSignUp = async function() {
+    const email = document.getElementById('signupEmail').value;
+    const password = document.getElementById('signupPassword').value;
+    const fullName = document.getElementById('signupName').value;
+    const companyName = document.getElementById('signupCompany').value;
+
+    if (!email || !password || !fullName || !companyName) {
+      toast('Please fill in all fields', 'warn');
+      return;
+    }
+
+    try {
+      const result = await window.__cleanbid_auth.signUp(email, password, fullName);
+      window.closeAuthForms();
+      window.__cleanbid_pending_company = companyName;
+
+      if (result && result.emailConfirmationRequired) {
+        toast('Account created! Check your email to confirm, then sign in.', 'success');
+      } else {
+        toast('Account created! Setting up your workspace...', 'success');
+        // Show workspace onboarding
+        window.showWorkspaceOnboarding();
+      }
+    } catch (error) {
+      const msg = (error && error.message) ? error.message : String(error);
+      if (/rate.?limit|too many requests|email rate/i.test(msg)) {
+        toast('Too many sign-up attempts. Please wait a few minutes and try again, or use a different email.', 'warn');
+      } else {
+        toast(msg || 'Sign up failed', 'warn');
+      }
+    }
+  };
+
+  window.handleSignIn = async function() {
+    const email = document.getElementById('signinEmail').value;
+    const password = document.getElementById('signinPassword').value;
+
+    if (!email || !password) {
+      toast('Please enter email and password', 'warn');
+      return;
+    }
+
+    try {
+      const result = await window.__cleanbid_auth.signIn(email, password);
+      window.closeAuthForms();
+      toast('Signed in successfully!', 'success');
+      
+      // Check if user has workspaces
+      const workspaces = await window.__cleanbid_workspace.getWorkspaces();
+      if (workspaces.length === 0) {
+        window.showWorkspaceOnboarding();
+      } else if (workspaces.length === 1) {
+        window.__cleanbid_current_workspace = workspaces[0];
+        if (window.__cleanbid_db && window.__cleanbid_db.setCurrentWorkspaceId) {
+          window.__cleanbid_db.setCurrentWorkspaceId(workspaces[0].id);
+        }
+        await enterApp(false);
+      } else {
+        window.showWorkspacePicker(workspaces);
+      }
+    } catch (error) {
+      toast(error.message || 'Sign in failed', 'warn');
+    }
+  };
+
+  window.handleCreateWorkspace = async function() {
+    const name = document.getElementById('workspaceName').value || window.__cleanbid_pending_company;
+    if (!name) {
+      toast('Please enter a company name', 'warn');
+      return;
+    }
+
+    try {
+      const workspace = await window.__cleanbid_workspace.createNewWorkspace(name);
+      window.closeWorkspaceOnboarding();
+      const ws = (workspace && typeof workspace === 'object' && 'workspace' in workspace && workspace.workspace)
+        ? workspace.workspace
+        : workspace;
+      if (!ws || !ws.id) throw new Error('Workspace created but no id returned');
+      window.__cleanbid_current_workspace = {
+        id: ws.id,
+        name: ws.name,
+        role: 'admin',
+      };
+      if (window.__cleanbid_db && window.__cleanbid_db.setCurrentWorkspaceId) {
+        window.__cleanbid_db.setCurrentWorkspaceId(workspace.id);
+      }
+      toast('Workspace created!', 'success');
+      await enterApp(false);
+    } catch (error) {
+      toast(error.message || 'Failed to create workspace', 'warn');
+    }
+  };
+
+  window.handleLogout = async function() {
+    try {
+      await window.__cleanbid_auth.signOut();
+    } catch (e) {
+      console.error('[CleanBid] Logout error:', e);
+    }
+    
+    // Flush any pending saves before clearing state
+    if (window.__cleanbid_db && window.__cleanbid_db.flushSave) {
+      await window.__cleanbid_db.flushSave();
+    }
+    
+    window.__cleanbid_is_authenticated = false;
+    window.__cleanbid_is_demo = false;
+    window.__cleanbid_user = null;
+    window.__cleanbid_current_workspace = null;
+    window.__cleanbid_state = {};
+    
+    location.reload();
+  };
+
+  // Expose initAuthFlow globally so the module script can trigger it after
+  // registering bootstrap/auth/db/workspace globals. The module script is
+  // the sole caller to avoid double-init races.
+  window.__cleanbid_initAuthFlow = initAuthFlow;
+
+  async function initAuthFlow() {
+    // Show loading
+    document.getElementById('authLoading').classList.remove('hidden');
+    
+    try {
+      // Initialize modules
+      await window.__cleanbid_bootstrap();
+      
+      // Check auth state
+      const user = window.__cleanbid_auth.getCurrentUser();
+      const session = window.__cleanbid_auth.getSession();
+      
+      if (user && session) {
+        // User is authenticated
+        window.__cleanbid_is_authenticated = true;
+        
+        // Get workspaces
+        const workspaces = await window.__cleanbid_workspace.getWorkspaces();
+        
+        if (workspaces.length === 0) {
+          // New user - show workspace onboarding
+          document.getElementById('authLoading').classList.add('hidden');
+          window.showWorkspaceOnboarding();
+        } else if (workspaces.length === 1) {
+          // Single workspace - auto-select
+          window.__cleanbid_current_workspace = workspaces[0];
+          if (window.__cleanbid_db && window.__cleanbid_db.setCurrentWorkspaceId) {
+            window.__cleanbid_db.setCurrentWorkspaceId(workspaces[0].id);
+          }
+          document.getElementById('authLoading').classList.add('hidden');
+          await enterApp(false);
+        } else {
+          // Multiple workspaces - let user choose
+          document.getElementById('authLoading').classList.add('hidden');
+          window.showWorkspacePicker(workspaces);
+        }
+      } else {
+        // Not authenticated - show landing page
+        document.getElementById('authLoading').classList.add('hidden');
+      }
+    } catch (error) {
+      console.error('[CleanBid] Auth flow error:', error);
+      document.getElementById('authLoading').classList.add('hidden');
+      // Show landing page on error
+    }
+  }
+})();
 </script>
+
+<script type="module">
+  import { initAuth, signUp, signIn, signOut, getCurrentUser, getSession } from './src/auth.js';
+  import { initDb, saveState, loadState, loadDemoState, saveDemoState, setCurrentWorkspaceId, getDbMode, flushSave } from './src/db.js';
+  import { initWorkspace, getWorkspaces, createNewWorkspace } from './src/workspace.js';
+  import { bootstrap } from './src/main.js';
+
+  window.__cleanbid_auth = { initAuth, signUp, signIn, signOut, getCurrentUser, getSession };
+  window.__cleanbid_db = { initDb, saveState, loadState, loadDemoState, saveDemoState, setCurrentWorkspaceId, getDbMode, flushSave };
+  window.__cleanbid_workspace = { initWorkspace, getWorkspaces, createNewWorkspace };
+  window.__cleanbid_bootstrap = bootstrap;
+
+  // Trigger auth flow now that modules are registered
+  if (window.__cleanbid_initAuthFlow) {
+    window.__cleanbid_initAuthFlow();
+  }
+</script>
+
 </body>
 </html>
