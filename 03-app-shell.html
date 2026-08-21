@@ -2072,15 +2072,81 @@ function mergeProductivity(overrides){
   return merged;
 }
 
-function recalc(){
+/* ---------------------------------------------------------------------
+   CANONICAL INPUT BUILDER (P0-1/P0-4)
+   The ONE place that normalizes builder UI state into engine input.
+   recalc(), the G/B/B matrix and every package-tier computation must
+   derive their numbers from calculatePricing(buildEngineInput(...)).
+--------------------------------------------------------------------- */
+function buildEngineInput(overrides){
   const sqft = fromInputToSqft(document.getElementById('qbSqft').value);
-  const areas = qb.areas;
   let totalArea = sqft || 0;
   if(!sqft){
-    // sum area inputs (always stored as sq ft internally)
-    totalArea = areas.reduce((s,a)=>s+(a.sqft||0),0);
+    totalArea = qb.areas.reduce((s,a)=>s+(a.sqft||0),0);
   }
-  const P = activePricing();
+  const base = {
+    totalArea,
+    buildingType: document.getElementById('qbType').value,
+    baseFrequency: parseFloat(document.getElementById('qbFreq').value)||1,
+    areas: qb.areas,
+    tasks: qb.tasks,
+    profile: activePricing(),
+    addons: state.addons||[],
+    package: qb.package
+  };
+  if(overrides) Object.assign(base, overrides);
+  return base;
+}
+
+/* Compute the three customer-facing package tiers from the SAME canonical
+   input, varying ONLY the package (multiplier + margin offset) — exactly
+   what the engine models. Used by the builder G/B/B matrix. */
+function computeTierPrices(input){
+  const base = input || buildEngineInput();
+  const out = {};
+  for(const pkg of ['essential','professional','premium']){
+    out[pkg] = CleanBidPricing.calculatePricing({...base, package: pkg}).monthly;
+  }
+  return out;
+}
+
+/* Compute the three package tiers for a SAVED quote from its own pricing
+   snapshot (priceSnap/productivitySnap), so historical proposals remain
+   stable when global settings change. NOTE (single-source-of-truth): this
+   is INPUT NORMALIZATION ONLY — every number is produced by
+   CleanBidPricing.calculatePricing(); no pricing arithmetic lives here. */
+function computeQuoteTierPrices(q){
+  const P = q.priceSnap || state.pricing;
+  const prod = q.productivitySnap || state.pricing.productivity;
+  const areas = q.areas || [];
+  const profile = {
+    wage:P.wage, burden:P.burden, overhead:P.overhead, margin:P.margin,
+    minPrice:P.minPrice, supplies:P.supplies,
+    productivity: prod
+  };
+  const base = {
+    totalArea: q.sqft || areas.reduce((s,a)=>s+(a.sqft||0),0),
+    buildingType: q.type || 'office',
+    baseFrequency: q.frequency || 1,
+    areas,
+    tasks: q.tasks || [],
+    profile,
+    addons: q.addons || [],
+    package: q.package || 'professional'
+  };
+  const out = {};
+  for(const pkg of ['essential','professional','premium']){
+    out[pkg] = CleanBidPricing.calculatePricing({...base, package: pkg}).monthly;
+  }
+  return out;
+}
+
+function recalc(){
+  // P0-1: normalize builder state ONCE via the canonical input builder.
+  const ENG = buildEngineInput();
+  const totalArea = ENG.totalArea;
+  const areas = qb.areas;
+  const P = ENG.profile;
 
   // ---- Validation guards (P0 #12 — spec §12) ----
   if(P.wage < 0){ showFatal('Hourly wage cannot be negative.'); return; }
@@ -2096,55 +2162,28 @@ function recalc(){
   });
   if(_checkProd){ showFatal('A productivity rate is missing or invalid.'); return; }
 
-  // weighted productivity by area type
+  // ---- CANONICAL PRICING PATH (P0-1) ----
+  // ALL quote mathematics flow through CleanBidPricing.calculatePricing().
+  // This is the single authoritative calculation path; the code below only
+  // maps the engine result into qb.calc and DOM bindings. No pricing math
+  // happens inline here anymore.
+  let calc;
+  try {
+    calc = CleanBidPricing.calculatePricing(ENG);
+  } catch(err) {
+    showFatal('Pricing inputs are invalid: ' + err.message);
+    return;
+  }
+  if(calc.error){ showFatal('Pricing error: ' + calc.error); return; }
+
+  // Display-only weighted productivity across surveyed areas (never priced).
   let baseProd = P.productivity.office;
   if(areas.length>0){
     const tw = areas.reduce((s,a)=>s + P.productivity[a.type]*a.sqft, 0);
     const ta = areas.reduce((s,a)=>s + a.sqft, 0);
-    baseProd = tw/ta;
+    if(ta>0) baseProd = tw/ta;
   }
-  const taskBonus = qb.tasks.reduce((s,t)=>s + (parseFloat(t.min)||0), 0) / 60;
-  const hoursBase = Math.max(0.5, totalArea/baseProd);
-  const hoursPerVisit = Math.max(0.5, hoursBase + taskBonus);
-  const visitCleaners_v = Math.max(1, Math.ceil(hoursPerVisit/2.5));
-  const cleaners = Math.max(1, Math.ceil(hoursPerVisit/2.5));
-  const laborPerVisit = hoursPerVisit * P.wage * cleaners;
-  const burdenPerVisit = laborPerVisit * (P.burden/100);
-  const burdened = laborPerVisit + burdenPerVisit;
-  const suppliesPerVisit = laborPerVisit * (P.supplies/100) * cleaners;
-  const overheadPerVisit = burdened * (P.overhead/100);
-  // Add-ons: respect each addon's pricing method (spec §18)
-  //   visit = $/cleaning visit | sqft = $/sq ft | hour = $/labor hour | fixed = $/month split across visits
-  let addonCost = 0;
-  for(const a of (state.addons||[])){
-    if(!a.enabled) continue;
-    if(a.method==='visit')      addonCost += a.value;
-    else if(a.method==='sqft')  addonCost += a.value * Math.max(1, totalArea);
-    else if(a.method==='hour')  addonCost += a.value * hoursPerVisit;
-    else if(a.method==='fixed') addonCost += a.value / Math.max(1, visitsPerMonth);
-  }
-  const costPerVisit = burdened + overheadPerVisit + suppliesPerVisit + addonCost;
-  // package adjustments
-  const pkgMul = qb.package==='essential' ? 0.92 : qb.package==='premium' ? 1.10 : 1.0;
-  const margin = qb.package==='essential' ? Math.max(15,P.margin-4) : qb.package==='premium' ? Math.min(45,P.margin+6) : P.margin;
-  const sellingPerVisit = costPerVisit / (1 - margin/100) * pkgMul;
-  const freq = parseFloat(document.getElementById('qbFreq').value)||1;
-  const visitsPerMonth = areas.length>0 ? areas.reduce((s,a)=>s + (parseFloat(a.freq)||1)*4.33, 0) : freq*4.33;
-  const monthlyLaborHrs = hoursPerVisit * cleaners * visitsPerMonth;
-  let monthly = sellingPerVisit * visitsPerMonth;
-  if(monthly < P.minPrice) monthly = P.minPrice;
-  const annual = monthly*12;
-  const psf = totalArea>0 ? monthly/totalArea : 0;
-  // annual economics
-  const annualLabor = laborPerVisit * 12 * visitsPerMonth;
-  const annualSupplies = suppliesPerVisit * 12 * visitsPerMonth;
-  const annualBurden = burdenPerVisit * 12 * visitsPerMonth;
-  const annualOverhead = overheadPerVisit * 12 * visitsPerMonth;
-  const annualDirect = annualLabor + annualSupplies + annualBurden + annualOverhead + addonCost*12*visitsPerMonth;
-  const annualProfit = annual - annualDirect;
-  const grossMargin = annual>0 ? annualProfit/annual : 0;
-
-  // P0 #3 — per-area drill-down data (spec §7/§11)
+  // P0 #3 — per-area drill-down data (spec §7/§11) — display only.
   // Each area's monthly labor contribution to the overall estimate
   const perArea = areas.map(a=>{
     const prod = (P.productivity[a.type]) || (P.productivity.other) || 2000;
@@ -2153,16 +2192,52 @@ function recalc(){
     return { id:a.id, name:a.name, sqft:a.sqft, type:a.type, prod, hoursMonth };
   });
 
+  const burdened = calc.laborPerVisit + calc.burdenPerVisit;
+  const annualDirect = calc.annualDirectCost;
+  const annualProfit = calc.annual - annualDirect;
+  const grossMargin = calc.annual>0 ? annualProfit/calc.annual : 0;
+
   qb.calc = {
-    totalArea, baseProd, hoursPerVisit, cleaners, wage:P.wage,
-    burdened, suppliesPerVisit, overheadPerVisit, addonCost,
-    costPerVisit, sellingPerVisit, margin, visitsPerMonth, monthlyLaborHrs,
-    monthly, annual, psf, laborPerVisit, burdenPerVisit,
-    annualLabor, annualSupplies, annualBurden, annualOverhead,
+    totalArea, baseProd,
+    hoursPerVisit: calc.visitCrewHours,
+    cleaners: calc.visitCleaners,
+    wage:P.wage,
+    burdened,
+    suppliesPerVisit: calc.suppliesPerVisit,
+    overheadPerVisit: calc.overheadPerVisit,
+    addonCost: calc.addonPerVisit,
+    costPerVisit: calc.costPerVisit,
+    sellingPerVisit: calc.sellingPerVisit,
+    margin: calc.targetMargin,
+    visitsPerMonth: calc.monthlyVisits,
+    monthlyLaborHrs: calc.totalMonthlyCrewHours,
+    monthly: calc.monthly, annual: calc.annual, psf: calc.psf,
+    laborPerVisit: calc.laborPerVisit, burdenPerVisit: calc.burdenPerVisit,
+    annualLabor: calc.annualLabor, annualSupplies: calc.annualSupplies,
+    annualBurden: calc.annualBurden, annualOverhead: calc.annualOverhead,
     annualDirect, annualProfit, grossMargin,
     profileName:P.profileName, productivity:P.productivity,
     areaBreakdown: areas, areaHours: perArea
   };
+  // Local aliases so the existing DOM-binding section below keeps working
+  // unchanged against canonical values.
+  const hoursPerVisit = qb.calc.hoursPerVisit;
+  const cleaners = qb.calc.cleaners;
+  const visitsPerMonth = qb.calc.visitsPerMonth;
+  const laborPerVisit = qb.calc.laborPerVisit;
+  const burdenPerVisit = qb.calc.burdenPerVisit;
+  const suppliesPerVisit = qb.calc.suppliesPerVisit;
+  const overheadPerVisit = qb.calc.overheadPerVisit;
+  const addonCost = qb.calc.addonCost;
+  const costPerVisit = qb.calc.costPerVisit;
+  const margin = qb.calc.margin;
+  const monthly = qb.calc.monthly;
+  const annual = qb.calc.annual;
+  const psf = qb.calc.psf;
+  const annualLabor = qb.calc.annualLabor;
+  const annualBurden = qb.calc.annualBurden;
+  const annualSupplies = qb.calc.annualSupplies;
+  const annualOverhead = qb.calc.annualOverhead;
   // render calc card
   document.getElementById('cArea').textContent = fmtArea(totalArea);
   document.getElementById('cCleaners').textContent = cleaners;
@@ -2212,8 +2287,10 @@ function pickPkg(p){ qb.package = p; recalc(); }
 function renderGbB(){
   const P = activePricing();
   const base = qb.calc;
-  // frequency multiplier per package
-  const fm = {essential:1*0.7, professional:1, premium:1.4}; // visits per week roughly
+  // P0-4: tier prices come from the SAME canonical engine call as the
+  // headline number — only the package varies (multiplier + margin offset).
+  // No floor-bypassing or frequency-fudging math here anymore.
+  const tiers = computeTierPrices();
   const offerings = [
     {label:'Cleaning frequency', essential:freqChip(qb.calc.visitsPerMonth*0.6), pro:freqChip(qb.calc.visitsPerMonth), prem:freqChip(qb.calc.visitsPerMonth*1.4)},
     {label:'Restroom service', essential:'Standard', pro:'Enhanced', prem:'Premium'},
@@ -2222,11 +2299,7 @@ function renderGbB(){
     {label:'Day porter', essential:'—', pro:'Optional', prem:'Included'},
     {label:'$/month', essential:true, pro:true, prem:true}
   ];
-  function priceFor(pkg){
-    const mul = pkg==='essential' ? 0.92 : pkg==='premium' ? 1.10 : 1.0;
-    return base.costPerVisit*mul/((1-Math.max(15,Math.min(45,P.margin+(pkg==='premium'?6:pkg==='essential'?-4:0)))/100))*(base.visitsPerMonth*fm[pkg]);
-  }
-  const pEl = priceFor('essential'), pPr = priceFor('professional'), pPm = priceFor('premium');
+  const pEl = tiers.essential, pPr = tiers.professional, pPm = tiers.premium;
   const body = offerings.map(o=>{
     if(o.essential===true){
       return `<tr>
@@ -2782,22 +2855,29 @@ function commitRevise(){
   saveDraft();
   // capture the just-saved and the prior
   const newQ = state.quotes[0];
-  if(state.quotes.length<1) return;
+  if(!newQ) return;
   // Already a new draft — push it as latest version against an existing same-property quote
   // Find existing quote with same propertyName & same companyName
   const existing = state.quotes.slice(1).find(q=>q.propertyName===newQ.propertyName && q.companyName===newQ.companyName);
   if(existing){
-    // merge: append the new draft into existing.versions
-    const newVer = newQ.version;
-    newVer.total = newQ.monthly;
-    newVer.monthly = newQ.monthly;
-    newVer.annual = newQ.annual;
-    newVer.cleaners = newQ.cleaners;
-    newVer.hoursPerVisit = newQ.hoursPerVisit;
-    newVer.profileId = newQ.profileId;
-    existing.versions = existing.versions || [];
+    // P0-3: build a PROPER version object from the new draft.
+    // Never push raw numbers into versions[] — every entry must be a valid
+    // version object so history, pickers and diffs stay structurally sound.
+    existing.versions = Array.isArray(existing.versions) ? existing.versions : [];
+    const newVer = {
+      v: existing.versions.length + 1,
+      total: Math.round(newQ.monthly),
+      date: 'Today',
+      iso: new Date().toISOString(),
+      monthly: Math.round(newQ.monthly),
+      annual: Math.round(newQ.annual),
+      cleaners: newQ.cleaners,
+      hoursPerVisit: newQ.hoursPerVisit,
+      profileId: newQ.profileId,
+      margin: newQ.margin
+    };
     existing.versions.push(newVer);
-    existing.version = newVer;
+    existing.version = newVer.v;
     existing.monthly = newQ.monthly;
     existing.annual = newQ.annual;
     existing.margin = newQ.margin;
@@ -2818,9 +2898,9 @@ function commitRevise(){
     existing.productivitySnap = newQ.productivitySnap;
     // remove the orphan draft
     state.quotes.shift();
-    state.activity.unshift({avt:'JD',actor:'Jane',what:'created version '+newVer+' of',object:existing.propertyName,time:'just now'});
-    // show diff
-    showDiff(existing, newVer-1);
+    state.activity.unshift({avt:'JD',actor:'Jane',what:'created version '+newVer.v+' of',object:existing.propertyName,time:'just now'});
+    // show diff against the previous version (index, not version number)
+    showDiff(existing, existing.versions.length - 2);
   } else {
     toast('No matching prior quote found — saved as new quote.');
   }
@@ -2968,34 +3048,11 @@ function renderProposal(q){
     areas.forEach(a=>totalAreaSqft+=a.sqft);
     areaRows = `<table class="p-table"><thead><tr><th>Area</th><th>Type</th><th>Floor</th><th>Sq Ft</th><th>Frequency</th></tr></thead><tbody>`+areas.map(a=>`<tr><td><b>${esc(a.name)}</b></td><td>${cap(a.type)}</td><td>${esc(a.floor)}</td><td class="tabnum">${a.sqft.toLocaleString()}</td><td>${a.freq}x / wk</td></tr>`).join('')+`</tbody></table>`;
   }
-  // package prices — recomputed from snapshot priceSnap + productivitySnap for stability
-  const P = q.priceSnap || state.pricing;
-  const prod = q.productivitySnap || state.pricing.productivity;
-  function price(pkg){
-    const mul = pkg==='essential' ? 0.92 : pkg==='premium' ? 1.10 : 1.0;
-    const margin = pkg==='essential' ? Math.max(15,P.margin-4) : pkg==='premium' ? Math.min(45,P.margin+6) : P.margin;
-    // recompute hours
-    const totalSqft = q.sqft || totalAreaSqft;
-    let baseProd = prod.office;
-    if(areas.length>0){
-      const tw = areas.reduce((s,a)=>s + prod[a.type]*a.sqft, 0);
-      const ta = areas.reduce((s,a)=>s + a.sqft, 0);
-      baseProd = tw/ta;
-    }
-    const h = Math.max(0.5, totalSqft/baseProd);
-    const clean = Math.max(1, Math.ceil(h/2.5));
-    const labor = h * P.wage * clean;
-    const burdens = labor*(1+P.burden/100);
-    const supp = labor*(P.supplies/100)*clean;
-    const overhead = burdens*(P.overhead/100);
-    const cost = burdens + overhead + supp;
-    const sell = cost / (1 - margin/100) * mul;
-    const vpm = areas.length>0 ? areas.reduce((s,a)=>s+(parseFloat(a.freq)||1)*4.33,0) : (q.frequency||1)*4.33;
-    let m = sell*vpm;
-    if(m<P.minPrice) m = P.minPrice;
-    return Math.round(m);
-  }
-  const pE = price('essential'), pP = price('professional'), pPr = price('premium');
+  // package prices — P0-4: recomputed from the quote's own pricing snapshot
+  // through the CANONICAL engine (same math as builder + G/B/B). No inline
+  // pricing arithmetic in the proposal renderer anymore.
+  const tiers = computeQuoteTierPrices(q);
+  const pE = tiers.essential, pP = tiers.professional, pPr = tiers.premium;
 
   document.getElementById('propHost').innerHTML = `
     <div class="p-shell">
