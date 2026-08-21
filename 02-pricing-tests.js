@@ -256,5 +256,234 @@ function profile(id) {
   throw new Error('unknown profile '+id);
 }
 
+/* ====================================================================
+   P0 REGRESSION SUITE — canonical pricing, add-ons, packages,
+   validation guards, application pricing path, version integrity.
+   Added during P0 remediation. Zero dependencies beyond Node builtins.
+   ==================================================================== */
+
+function expectThrows(name, fn, msgPart){
+  try { fn(); }
+  catch(e){
+    if(!msgPart || String(e.message).includes(msgPart)){
+      passed++; console.log(`  PASS  ${name}  (threw: ${e.message})`);
+    } else {
+      failed++; console.log(`  FAIL  ${name}  threw wrong error: ${e.message}`);
+    }
+    return;
+  }
+  failed++; console.log(`  FAIL  ${name}  expected an error, got none`);
+}
+function check(name, cond, detail){
+  if(cond){ passed++; console.log(`  PASS  ${name}${detail?'  ['+detail+']':''}`); }
+  else { failed++; console.log(`  FAIL  ${name}${detail?'  ['+detail+']':''}`); }
+}
+function stdProfile(){ return { wage:18, burden:15, overhead:12, margin:25, minPrice:800, supplies:8,
+  productivity:{office:2800,private:2200,conference:1800,reception:1600,hallway:3500,lobby:2400,restroom:800,kitchen:900,warehouse:4500,stairwell:1200,medical:600,classroom:2400,retail:3000,other:2000} }; }
+
+// ---------- R1. Validation guards ----------
+console.log('\nP0-R1 — validation guards refuse garbage input');
+{
+  const mk = over => ({ totalArea:10000, buildingType:'office', areas:[], baseFrequency:2,
+    tasks:[], package:'professional', profile:Object.assign(stdProfile(), over) });
+  expectThrows('negative wage rejected',        ()=>calculatePricing(mk({wage:-5})),      'invalid wage');
+  expectThrows('zero wage rejected',            ()=>calculatePricing(mk({wage:0})),       'invalid wage');
+  expectThrows('negative margin rejected',      ()=>calculatePricing(mk({margin:-10})),   'invalid gross margin');
+  expectThrows('margin >= 100 rejected',        ()=>calculatePricing(mk({margin:100})),   'invalid gross margin');
+  expectThrows('burden > 100 rejected',         ()=>calculatePricing(mk({burden:140})),   'invalid burden');
+  expectThrows('negative burden rejected',      ()=>calculatePricing(mk({burden:-1})),    'invalid burden');
+  expectThrows('overhead > 100 rejected',       ()=>calculatePricing(mk({overhead:101})), 'invalid overhead');
+  expectThrows('supplies > 100 rejected',       ()=>calculatePricing(mk({supplies:250})), 'invalid supplies');
+  expectThrows('missing profile rejected',
+    ()=>calculatePricing({totalArea:1000, areas:[], tasks:[], package:'professional'}), 'profile is required');
+  // Invalid productivity must not poison the math (engine divides defensively).
+  const r0 = calculatePricing(mk({productivity:{office:0}}));
+  check('zero productivity stays finite', Number.isFinite(r0.monthly) && r0.monthly>0, 'monthly='+r0.monthly.toFixed(2));
+  const rn = calculatePricing(mk({productivity:{office:-999}}));
+  check('negative productivity stays finite', Number.isFinite(rn.monthly) && rn.monthly>0, 'monthly='+rn.monthly.toFixed(2));
+}
+
+// ---------- R2. Fixed-monthly add-on (former TDZ crash) ----------
+console.log('\nP0-R2 — fixed-monthly add-on calculates without throwing');
+{
+  let r, threw=null;
+  try {
+    r = calculatePricing({
+      totalArea:50000, buildingType:'office', areas:[], baseFrequency:2, tasks:[],
+      package:'professional', profile:stdProfile(),
+      addons:[{id:'fx', name:'Consumables', method:'fixed', value:120, enabled:true}]
+    });
+  } catch(e){ threw=e; }
+  check('no exception on fixed add-on', !threw, threw?('THREW: '+threw.message):'');
+  // 120/mo ÷ 8.66 visits = $13.86/visit cost
+  check('addonPerVisit = value/monthlyVisits', Math.abs(r.addonPerVisit - 120/(2*4.33)) < 0.01, r.addonPerVisit.toFixed(2));
+  const base = calculatePricing({ totalArea:50000, buildingType:'office', areas:[], baseFrequency:2,
+    tasks:[], package:'professional', profile:stdProfile(), addons:[] });
+  // Price impact = addon marked up through margin: (120/8.66)/(1-0.25) × 8.66 = 120/0.75 = 160
+  check('monthly rises by addon grossed-up through margin', Math.abs((r.monthly-base.monthly) - 160) < 1,
+    'delta='+(r.monthly-base.monthly).toFixed(2));
+}
+
+// ---------- R3. Package rules ----------
+console.log('\nP0-R3 — Essential / Professional / Premium package rules');
+{
+  const inp = { totalArea:75000, buildingType:'office', areas:[], baseFrequency:5, tasks:[], profile:stdProfile() };
+  const e = calculatePricing({...inp, package:'essential'});
+  const p = calculatePricing({...inp, package:'professional'});
+  const x = calculatePricing({...inp, package:'premium'});
+  check('essential < professional < premium', e.monthly < p.monthly && p.monthly < x.monthly,
+    `${Math.round(e.monthly)} < ${Math.round(p.monthly)} < ${Math.round(x.monthly)}`);
+  check('essential: mult 0.92, margin offset −4', Math.abs(e.packageMultiplier-0.92)<1e-9 && e.targetMargin===21, 'margin='+e.targetMargin);
+  check('professional: mult 1.0, margin unchanged', Math.abs(p.packageMultiplier-1.0)<1e-9 && p.targetMargin===25, 'margin='+p.targetMargin);
+  check('premium: mult 1.10, margin offset +6', Math.abs(x.packageMultiplier-1.10)<1e-9 && x.targetMargin===31, 'margin='+x.targetMargin);
+  const u = calculatePricing({...inp, package:'not-a-package'});
+  check('unknown package falls back to professional', u.monthly===p.monthly && u.targetMargin===25);
+  // Margin offsets respect the 15–45 clamp band
+  const lo = calculatePricing({...inp, package:'essential', profile:Object.assign(stdProfile(),{margin:16})});
+  check('essential margin clamps at floor 15', lo.targetMargin===15, 'margin='+lo.targetMargin);
+  const hi = calculatePricing({...inp, package:'premium', profile:Object.assign(stdProfile(),{margin:42})});
+  check('premium margin clamps at ceiling 45', hi.targetMargin===45, 'margin='+hi.targetMargin);
+}
+
+// ---------- R4. Large commercial building — full component breakdown ----------
+console.log('\nP0-R4 — 75,000 sq ft office, 5×/week: every component');
+{
+  const r = calculatePricing({ totalArea:75000, buildingType:'office', areas:[], baseFrequency:5,
+    tasks:[], package:'professional', profile:stdProfile() });
+  check('crew hours = 75000/2800',        Math.abs(r.visitCrewHours - 26.786) < 0.05, r.visitCrewHours.toFixed(2));
+  check('cleaners = ceil(hours/2.5)',     r.visitCleaners===11, ''+r.visitCleaners);
+  check('labor = hours × wage (NO ×cleaners)', Math.abs(r.laborPerVisit - 26.786*18) < 0.05, r.laborPerVisit.toFixed(2));
+  check('burden = labor × 15%',           Math.abs(r.burdenPerVisit - 26.786*18*0.15) < 0.02, r.burdenPerVisit.toFixed(2));
+  check('supplies = labor × 8%',          Math.abs(r.suppliesPerVisit - 26.786*18*0.08) < 0.02, r.suppliesPerVisit.toFixed(2));
+  check('overhead = burdened × 12%',      Math.abs(r.overheadPerVisit - 26.786*18*1.15*0.12) < 0.02, r.overheadPerVisit.toFixed(2));
+  check('cost/visit sums',                Math.abs(r.costPerVisit - (r.laborPerVisit+r.burdenPerVisit+r.suppliesPerVisit+r.overheadPerVisit)) < 0.01, r.costPerVisit.toFixed(2));
+  check('monthly = sell × visits',        Math.abs(r.monthly - (r.costPerVisit/(1-0.25))*(5*4.33)) < 1, Math.round(r.monthly)+'');
+  check('annual = monthly × 12',          Math.abs(r.annual - r.monthly*12) < 0.01, Math.round(r.annual)+'');
+  // Package prices for the same building (what G/B/B must show)
+  const inp = { totalArea:75000, buildingType:'office', areas:[], baseFrequency:5, tasks:[], profile:stdProfile() };
+  const e = calculatePricing({...inp, package:'essential'}).monthly;
+  const pr = calculatePricing({...inp, package:'premium'}).monthly;
+  check('tier ordering on 75k building', e < r.monthly && r.monthly < pr, `${Math.round(e)} < ${Math.round(r.monthly)} < ${Math.round(pr)}`);
+}
+
+// ---------- R5. Application pricing path (the REAL app code) ----------
+// Extracts the embedded <script> from 03-app-shell.html and runs it in a VM
+// with a minimal DOM stub, proving the UI's calculation path matches the
+// standalone engine exactly. Still plain Node, zero dependencies.
+console.log('\nP0-R5 — application path (03-app-shell.html) matches engine');
+(function(){
+  const fs = require('fs'), vm = require('vm'), path = require('path');
+  const htmlPath = path.join(__dirname, '03-app-shell.html');
+  let html;
+  try { html = fs.readFileSync(htmlPath, 'utf8'); }
+  catch(e){ check('app shell readable', false, e.message); return; }
+  const m = html.match(/<script>([\s\S]*)<\/script>/);
+  if(!m){ check('embedded <script> found', false); return; }
+
+  function makeEl(id){ return { id, value:'', textContent:'', innerHTML:'', style:{}, dataset:{},
+    classList:{_s:new Set(['page']),add(c){this._s.add(c);},remove(c){this._s.delete(c);},toggle(c,f){f===undefined?(this._s.has(c)?this._s.delete(c):this._s.add(c)):(f?this._s.add(c):this._s.delete(c));return this._s.has(c);},contains(c){return this._s.has(c);}},
+    addEventListener(){}, appendChild(){}, remove(){}, focus(){}, querySelectorAll(){return [];}, getAttribute(){return null;} }; }
+  const els = {};
+  const documentStub = { getElementById:id=>(els[id]=els[id]||makeEl(id)), querySelector:()=>null,
+    querySelectorAll:()=>[], addEventListener(){}, body:makeEl('body'),
+    documentElement:makeEl('html'), createElement:t=>makeEl('dyn-'+t) };
+  documentStub.documentElement.style.setProperty = ()=>{};
+  const storage = {};
+  const sandbox = { console:{log(){}}, document:documentStub,
+    localStorage:{getItem:k=>storage[k]??null,setItem:(k,v)=>{storage[k]=String(v);}},
+    Date,Math,JSON,Number,String,Array,Object,parseFloat,parseInt,isNaN,Error,Set,setTimeout,clearTimeout,
+    confirm:()=>true,prompt:()=>null,alert:()=>{} };
+  sandbox.window=sandbox; sandbox.addEventListener=function(){}; sandbox.globalThis=sandbox;
+  vm.createContext(sandbox);
+
+  try { vm.runInContext(m[1], sandbox, {filename:'03-app-shell.html#script'}); }
+  catch(e){ check('app script executes', false, e.constructor.name+': '+e.message); return; }
+  try { vm.runInContext('enterApp(true)', sandbox); }
+  catch(e){ check('app boots with demo data', false, e.message); return; }
+
+  const engine = require('./01-pricing-engine.js');
+
+  // R5a: builder recalc() == standalone engine on a multi-area scenario
+  const areas = [
+    {id:1,name:'Open office',sqft:40000,type:'office',freq:5,minTask:0},
+    {id:2,name:'Restrooms',sqft:5000,type:'restroom',freq:7,minTask:0}
+  ];
+  vm.runInContext(`qb.areas.length=0;`, sandbox);
+  areas.forEach(a=>vm.runInContext(`qb.areas.push(${JSON.stringify(a)})`, sandbox));
+  documentStub.getElementById('qbSqft').value='';
+  vm.runInContext(`recalc()`, sandbox);
+  const appCalc = JSON.parse(vm.runInContext('JSON.stringify(qb.calc)', sandbox));
+  const engCalc = engine.calculatePricing({
+    totalArea:45000, buildingType:'office', baseFrequency:2, areas, tasks:[],
+    package:'professional', profile:stdProfile(), addons:[]
+  });
+  check('app labor == engine labor',        Math.abs(appCalc.laborPerVisit-engCalc.laborPerVisit)<0.01, appCalc.laborPerVisit.toFixed(2));
+  check('app burden == engine burden',      Math.abs(appCalc.burdenPerVisit-engCalc.burdenPerVisit)<0.01);
+  check('app supplies == engine supplies',  Math.abs(appCalc.suppliesPerVisit-engCalc.suppliesPerVisit)<0.01);
+  check('app overhead == engine overhead',  Math.abs(appCalc.overheadPerVisit-engCalc.overheadPerVisit)<0.01);
+  check('app monthly == engine monthly',    Math.abs(appCalc.monthly-engCalc.monthly)<0.01, appCalc.monthly.toFixed(2));
+  check('app cleaners == engine cleaners',  appCalc.cleaners===engCalc.visitCleaners, ''+appCalc.cleaners);
+  check('labor NOT multiplied by cleaners', Math.abs(appCalc.laborPerVisit - appCalc.hoursPerVisit*18)<0.01);
+
+  // R5b: G/B/B professional tier == headline price (single source of truth)
+  const tiers = JSON.parse(vm.runInContext('JSON.stringify(computeTierPrices())', sandbox));
+  check('GBB professional == headline', Math.abs(tiers.professional-appCalc.monthly)<0.01, tiers.professional.toFixed(2));
+  check('GBB essential <= professional <= premium', tiers.essential<=tiers.professional && tiers.professional<=tiers.premium,
+    `${Math.round(tiers.essential)} <= ${Math.round(tiers.professional)} <= ${Math.round(tiers.premium)}`);
+
+  // R5c: fixed-monthly add-on through the LIVE recalc() path (TDZ regression)
+  let tdzOk=true, tdzErr='';
+  try {
+    vm.runInContext(`state.addons.push({id:'ad-t',name:'Consumables',method:'fixed',value:120,enabled:true}); recalc();`, sandbox);
+  } catch(e){ tdzOk=false; tdzErr=e.message; }
+  check('fixed add-on: live recalc() no crash', tdzOk, tdzErr);
+  if(tdzOk){
+    const ac = JSON.parse(vm.runInContext('JSON.stringify(qb.calc.addonCost)', sandbox));
+    check('fixed add-on contributes non-zero cost', ac>0, 'addonCost='+Number(ac).toFixed(2));
+    vm.runInContext(`state.addons.pop(); recalc();`, sandbox);
+  }
+
+  // R5d: minimum-price floor honored on EVERY customer-facing path
+  const tinyQ = { id:'Q-TINY', sqft:100, type:'office', frequency:1, package:'professional',
+    areas:[], tasks:[], addons:[],
+    priceSnap:{wage:18,burden:15,overhead:12,margin:25,minPrice:800,supplies:8},
+    productivitySnap:stdProfile().productivity };
+  const tinyTiers = JSON.parse(vm.runInContext(
+    `JSON.stringify(computeQuoteTierPrices(${JSON.stringify(tinyQ)}))`, sandbox));
+  check('proposal tiers honor floor (E/P/P all = minPrice)',
+    tinyTiers.essential===800 && tinyTiers.professional===800 && tinyTiers.premium===800,
+    JSON.stringify(tinyTiers));
+
+  // R5e: revision flow keeps versions[] structurally valid (P0-3 regression)
+  documentStub.getElementById('qbSqft').value='75000';
+  documentStub.getElementById('qbPropName').value='Westbrook Tower';
+  documentStub.getElementById('qbCompany').value='Westbrook Real Estate';
+  try {
+    vm.runInContext('commitRevise()', sandbox); // saves draft + merges as v3 into Q-1042
+    const q = JSON.parse(vm.runInContext(`JSON.stringify(state.quotes.find(x=>x.id==='Q-1042'))`, sandbox));
+    check('revision merged into parent quote', !!q);
+    check('version count incremented', q.versions.length===3, 'count='+q.versions.length);
+    check('every version is an object', q.versions.every(v=>typeof v==='object' && v!==null && !Array.isArray(v)));
+    check('version numbers sequential from 1', q.versions.every((v,i)=>v.v===i+1), q.versions.map(v=>v.v).join(','));
+    check('previous versions intact', q.versions[0].total===10800 && q.versions[1].total===11450);
+    check('new version carries new values', typeof q.versions[2].monthly==='number' && q.versions[2].monthly>0, 'v3='+q.versions[2].monthly);
+    check('quote.version points at latest', q.version===q.versions.length, 'version='+q.version);
+    // diff rendering still works off the merged history
+    let diffOk=true, diffLen=0;
+    try {
+      vm.runInContext(`showDiff(state.quotes.find(x=>x.id==='Q-1042'), state.quotes.find(x=>x.id==='Q-1042').versions.length-2)`, sandbox);
+      diffLen = documentStub.getElementById('diffContent').innerHTML.length;
+    } catch(e){ diffOk=false; }
+    check('diff renders from merged history', diffOk && diffLen>100, 'len='+diffLen);
+  } catch(e){ check('revision flow completes', false, e.message); }
+
+  // R5f: proposal renderer produces a document from canonical tiers
+  try {
+    vm.runInContext(`renderProposal(state.quotes.find(x=>x.id==='Q-1042'))`, sandbox);
+    const len = documentStub.getElementById('propHost').innerHTML.length;
+    check('renderProposal works post-revision', len>1000, 'len='+len);
+  } catch(e){ check('renderProposal works post-revision', false, e.message); }
+})();
+
 console.log(`\n${passed} passed · ${failed} failed`);
 process.exit(failed===0 ? 0 : 1);
