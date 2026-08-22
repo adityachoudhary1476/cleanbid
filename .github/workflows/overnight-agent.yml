@@ -61,24 +61,26 @@ jobs:
               busy_input_prompt: true
           EOF
 
-      - name: Write task file
+      - name: Run overnight agent
         env:
-          TASK: ${{ inputs.task }}
+          TASK_FILE: ${{ runner.temp }}/task.txt
         run: |
           if [ -n "$TASK" ]; then
-            printf '%s' "$TASK" > task.txt
+            printf '%s' "$TASK" > "$TASK_FILE"
           else
-            printf '%s' "Nightly sweep: run all *.test.cjs suites with node. If anything fails, diagnose and fix it minimally, then re-run to green. Summarize what changed." > task.txt
+            printf '%s' "Nightly sweep: run all *.test.cjs suites with node. If anything fails, diagnose and fix it minimally, then re-run to green. Summarize what changed." > "$TASK_FILE"
           fi
-          echo "--- Task ---"; cat task.txt
+          echo "--- Task ---"; cat "$TASK_FILE"
 
       - name: Run overnight agent
+        env:
+          TASK_FILE: ${{ runner.temp }}/task.txt
         run: |
           hermes chat -Q --yolo --no-restore-cwd \
             --provider opencode-free -m x-preview-f-free \
             -t terminal,file \
-            --max-turns 60 --run-budget 6000 \
-            --query-file task.txt 2>&1 | tee agent-output.md
+            --max-turns 60 \
+            --query "$(cat "$TASK_FILE")" 2>&1 | tee agent-output.md
           echo "" >> agent-output.md
           echo "## Files changed by agent" >> agent-output.md
           git status --short >> agent-output.md

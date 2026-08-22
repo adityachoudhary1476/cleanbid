@@ -1,1 +1,0 @@
-Nightly sweep: run all *.test.cjs suites with node. If anything fails, diagnose and fix it minimally, then re-run to green. Summarize what changed.
