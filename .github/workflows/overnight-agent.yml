@@ -1,0 +1,122 @@
+name: Overnight Agent
+
+# Runs the Hermes agent against this repo using the FREE keyless
+# opencode-free provider (no API keys / secrets required).
+#
+# First run happens automatically when this branch is pushed (smoke test).
+# After that: Actions tab -> Overnight Agent -> Run workflow -> type a task.
+#
+# NOTE: the nightly schedule below only takes effect once this branch is
+# merged into main (GitHub restriction: schedules fire from the default
+# branch only). Until then, use manual dispatch.
+on:
+  push:
+    branches: [ci/overnight-agent]
+  workflow_dispatch:
+    inputs:
+      task:
+        description: "Task for the overnight agent"
+        required: false
+        default: "Inspect this repository. Run the available test suites (node 02-pricing-tests.cjs, node 04-activity-feed.test.cjs if present). Report architecture, test health, and three safe next coding tasks. Do NOT modify any files."
+  schedule:
+    - cron: '30 20 * * *'   # 02:00 IST daily
+
+concurrency:
+  group: overnight-agent
+  cancel-in-progress: true
+
+jobs:
+  overnight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Hermes Agent
+        run: pip install --no-input hermes-agent
+
+      - name: Configure Hermes (keyless free provider)
+        run: |
+          mkdir -p ~/.hermes
+          cat > ~/.hermes/config.yaml <<'EOF'
+          model:
+            provider: opencode-free
+            default: x-preview-f-free
+          onboarding:
+            seen:
+              tool_progress_prompt: true
+              busy_input_prompt: true
+          EOF
+
+      - name: Write task file
+        env:
+          TASK: ${{ inputs.task }}
+        run: |
+          if [ -n "$TASK" ]; then
+            printf '%s' "$TASK" > task.txt
+          else
+            printf '%s' "Nightly sweep: run all *.test.cjs suites with node. If anything fails, diagnose and fix it minimally, then re-run to green. Summarize what changed." > task.txt
+          fi
+          echo "--- Task ---"; cat task.txt
+
+      - name: Run overnight agent
+        run: |
+          hermes chat -Q --yolo --no-restore-cwd \
+            --provider opencode-free -m x-preview-f-free \
+            -t terminal,file \
+            --max-turns 60 --run-budget 6000 \
+            --query-file task.txt 2>&1 | tee agent-output.md
+          echo "" >> agent-output.md
+          echo "## Files changed by agent" >> agent-output.md
+          git status --short >> agent-output.md
+
+      - name: Upload report artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: overnight-report
+          path: agent-output.md
+
+      - name: Commit any changes the agent made
+        run: |
+          git config user.name "overnight-agent"
+          git config user.email "adityachoudhary1476@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "overnight agent: automated changes"
+            git push
+          fi
+
+      # Optional: fires only if you later add TELEGRAM_BOT_TOKEN and
+      # TELEGRAM_CHAT_ID as repo secrets. Harmless no-op until then.
+      - name: Notify Telegram
+        env:
+          TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          if [ -z "$TG_TOKEN" ] || [ -z "$TG_CHAT" ]; then
+            echo "Telegram secrets not set; skipping."
+            exit 0
+          fi
+          {
+            echo "🌙 Overnight agent finished on cleanbid"
+            echo ""
+            tail -c 3500 agent-output.md
+          } > tg_msg.txt
+          curl -s -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TG_CHAT}" \
+            --data-urlencode "text@tg_msg.txt" > /dev/null && echo "Telegram notified."
