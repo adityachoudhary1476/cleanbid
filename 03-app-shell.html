@@ -2131,8 +2131,13 @@ console.log('[CleanBid] boot v2');
    STATE + PERSISTENCE
 ==================================================================== */
 const STORE_KEY='cleanbid_v3';
+const DEMO_STORE_KEY='cleanbid_demo_v3';
 const labels={dashboard:'Dashboard',newquote:'Quote Builder',quotes:'Quotes',customers:'Customers',properties:'Properties',proposals:'Proposal',pricing:'Pricing Rules',profiles:'Pricing Profiles',branding:'Branding',areas:'Areas & Tasks',users:'Users & Roles'};
 const secMap={newquote:'Builder',proposals:'Pipeline',pricing:'Configure',profiles:'Configure',branding:'Configure',areas:'Configure',users:'Configure'};
+
+function workspaceStoreKey(prefix){
+  return state.workspaceId ? `${prefix}_${state.workspaceId}` : prefix;
+}
 
 let state = loadState();
 
@@ -2155,7 +2160,8 @@ window.addEventListener('beforeunload', function(e){
 });
 function defaultState(){
   return {
-    org:{name:'Summit Facility Services',initial:'S',phone:'(555) 234-9087',email:'hello@summitfacilityservices.example',web:'summitfacilityservices.example',address:'Demo Workspace\n100 Example Plaza\nDemo City, USA',tagline:'Cleaner spaces. Sharper teams.',footer:'Thank you for the opportunity to keep your workplace clean. — Summit Facility Services',color:'#c46a3a',license:'',trust:''},
+    workspaceId: null,
+    org:{name:'Summit Facility Services',initial:'S',phone:'(555) 234-9087',email:'hello@summitfacilityservices.example',web:'summitfacilityservices.example',address:'Demo Workspace\n100 Example Plaza\nDemo City, USA',tagline:'Cleaner spaces. Sharper teams.',footer:'Thank you for the opportunity to keep your workplace clean. — Summit Facility Services',color:'#c46a3a',license:'',trust:'',workspaceId:null},
     pricing:{wage:18,burden:15,overhead:12,margin:25,minPrice:800,supplies:8,contract:'12 months',payment:'Net 30',currency:'USD',units:'imperial',terms:'Pricing includes all labor, supplies, equipment, and management as described. Proposal valid for 30 days. Auto-renewal upon written acceptance.',productivity:{office:2800,private:2200,conference:1800,reception:1600,hallway:3500,lobby:2400,restroom:800,kitchen:900,warehouse:4500,stairwell:1200,medical:600,classroom:2400,retail:3000,other:2000}},
     profiles:[
       {id:'std',name:'Standard Commercial',wage:18,burden:15,overhead:12,margin:25},
@@ -2181,21 +2187,76 @@ function defaultState(){
     ]
   };
 }
-function loadState(){ try{const r=localStorage.getItem(STORE_KEY);if(r) return JSON.parse(r);}catch(e){} return defaultState(); }
-function saveState(){ try{localStorage.setItem(STORE_KEY, JSON.stringify(state));}catch(e){} }
+function loadState(){ try{const r=localStorage.getItem(workspaceStoreKey(STORE_KEY));if(r) return JSON.parse(r);}catch(e){} return defaultState(); }
+function saveState(){ try{localStorage.setItem(workspaceStoreKey(STORE_KEY), JSON.stringify(state));}catch(e){} }
 
 /* ====================================================================
    DB-AWARE STATE PERSISTENCE
    ==================================================================== */
+// ---- WORKSPACE STATE BOUNDARY -------------------------------------------------
+// Globally-owned keys that must SURVIVE a workspace switch (auth session
+// metadata + transient UI). Everything else is workspace-owned and is fully
+// REPLACED (never merged) when a different workspace is loaded.
+const GLOBAL_STATE_KEYS = ['me'];
+
+// Workspace-owned keys. These are the ONLY keys persisted per-workspace and
+// the ONLY keys overwritten when switching workspaces.
+const WORKSPACE_STATE_KEYS = [
+  'workspaceId','org','pricing','profiles','areaTypes','tasks',
+  'customers','properties','quotes','addons','users','activity'
+];
+const _WS_KEY_KIND = {
+  workspaceId:'primitive', org:'object', pricing:'object',
+  profiles:'array', areaTypes:'array', tasks:'array', customers:'array',
+  properties:'array', quotes:'array', addons:'array', users:'array', activity:'array'
+};
+function _clone(v){ try { return structuredClone(v); } catch(_){ return JSON.parse(JSON.stringify(v)); } }
+// Replace workspace-owned keys with persisted (or default) values. Global
+// keys are never touched. Incoming data is deep-cloned so the active state
+// never shares arrays / object references with a previously-loaded workspace.
+function replaceWorkspaceKeys(saved){
+  for(const key of WORKSPACE_STATE_KEYS){
+    // `workspaceId` is CONTEXT, set by the switch handler — never overwritten
+    // by the persisted blob (doing so would lose the active namespace).
+    if(key === 'workspaceId') continue;
+    const incoming = saved ? saved[key] : undefined;
+    const kind = _WS_KEY_KIND[key];
+    if(incoming === undefined || incoming === null){
+      state[key] = _clone(defaultState()[key]);
+    } else if(kind === 'array'){
+      state[key] = Array.isArray(incoming) ? _clone(incoming) : _clone(defaultState()[key]);
+    } else if(kind === 'object'){
+      const ok = incoming && typeof incoming === 'object' && !Array.isArray(incoming);
+      state[key] = ok ? _clone(incoming) : _clone(defaultState()[key]);
+    } else {
+      state[key] = incoming; // primitive (workspaceId)
+    }
+  }
+}
+
 async function loadStateFromDb(){
   if(window.__cleanbid_is_demo){
     return;
   }
+  let saved = null;
   if(window.__cleanbid_db && window.__cleanbid_db.loadState){
-    const saved = await window.__cleanbid_db.loadState();
-    if(saved && Object.keys(saved).length > 0){
-      Object.assign(state, saved);
+    saved = await window.__cleanbid_db.loadState();
+  } else if(typeof loadState === 'function'){
+    // Local fallback used when the DB module is unavailable (e.g. tests)
+    saved = loadState();
+  }
+  if(saved && Object.prototype.toString.call(saved) === '[object Object]' && Object.keys(saved).length > 0){
+    // Use the canonical module implementation when present, otherwise the
+    // inline fallback above. Either way: REPLACE, never merge.
+    if(window.__cleanbid_stateapi && typeof window.__cleanbid_stateapi.replaceWorkspaceState === 'function'){
+      window.__cleanbid_stateapi.replaceWorkspaceState(state, saved, defaultState);
+    } else {
+      replaceWorkspaceKeys(saved);
     }
+  } else {
+    // No persisted blob for this workspace -> start from a clean slate so a
+    // previously active workspace can never leak in.
+    replaceWorkspaceKeys(null);
   }
   setCurrentUser();
 }
@@ -2585,6 +2646,7 @@ function recalc(){
     laborPerVisit: calc.laborPerVisit, burdenPerVisit: calc.burdenPerVisit,
     annualLabor: calc.annualLabor, annualSupplies: calc.annualSupplies,
     annualBurden: calc.annualBurden, annualOverhead: calc.annualOverhead,
+    annualAddons: calc.annualAddons,
     annualDirect, annualProfit, grossMargin,
     profileName:P.profileName, productivity:P.productivity,
     areaBreakdown: areas, areaHours: perArea
@@ -2612,7 +2674,7 @@ function recalc(){
   // The calculated price is always preserved in qb.calc.monthly;
   // qb.calc.finalMonthly is what the UI/saved quote use.
   const ov = qb.override || null;
-  const ovActive = ov && ov.value > 0 && String(ov.value) !== String(Math.round(qb.calc.monthly));
+  const ovActive = ov && ov.value > 0 && Math.abs(ov.value - Math.round(qb.calc.monthly)) > 0.5;
   qb.calc.finalMonthly = ovActive ? ov.value : qb.calc.monthly;
   qb.calc.finalAnnual = qb.calc.finalMonthly * 12;
   qb.calc.overridden = !!ovActive;
@@ -2954,7 +3016,7 @@ function addNewAddon(){
   const name = document.getElementById('newAddonName').value.trim() || 'New add-on';
   const method = document.getElementById('newAddonMethod').value;
   const value = parseFloat(document.getElementById('newAddonValue').value) || 0;
-  state.addons.push({ id:'ad-'+Date.now(), name, method, value, enabled:true });
+  state.addons.push({ id:'ad-'+Date.now(), workspaceId: state.workspaceId, name, method, value, enabled:true });
   saveStateToDb();
   toast('Add-on added.');
   openAddonCfgRender();
@@ -3049,6 +3111,7 @@ function commitCustomer(){
   const id = document.getElementById('custId').value || Date.now();
   const c = state.customers.find(x=>x.id==id) || {};
   c.id = +id;
+  c.workspaceId = state.workspaceId;
   c.company = document.getElementById('custCompany').value.trim();
   c.contact = document.getElementById('custContact').value.trim();
   c.email = document.getElementById('custEmail').value.trim();
@@ -3634,9 +3697,10 @@ function findOrCreateProperty(customerId, name, address, type, sqft, floors){
   if(!nm) return null;
   let p = state.properties.find(x =>
     (x.name||'').trim().toLowerCase()===nm &&
+    (x.workspaceId===state.workspaceId) &&
     (customerId==null || x.customerId==null || String(x.customerId)===String(customerId)));
   if(!p){
-    p = { id: nextPropertyId(), customerId: customerId||null, name: name.trim(),
+    p = { id: nextPropertyId(), workspaceId: state.workspaceId, customerId: customerId||null, name: name.trim(),
           address: address||'', type: type||'office', sqft: sqft||null, floors: floors||1,
           quoteCount:0, lastQuoted:null };
     state.properties.push(p);
@@ -3664,6 +3728,7 @@ function saveDraft(){
   const P = activePricing();
   const q = {
     id: nextQuoteId(),
+    workspaceId: state.workspaceId,
     customerId,
     propertyId: prop ? prop.id : null,
     propertyName: propName,
@@ -3681,7 +3746,7 @@ function saveDraft(){
     areas: JSON.parse(JSON.stringify(qb.areas)),
     tasks: JSON.parse(JSON.stringify(qb.tasks)),
     notes: document.getElementById('qbNotes').value||'',
-    addons: [],
+     addons: JSON.parse(JSON.stringify(state.addons || [])),
     // P1-2: preserve BOTH prices on a saved quote
     calcMonthly: Math.round(qb.calc.monthly),
     override: qb.override ? {value: Math.round(qb.override.value), reason: qb.override.reason} : null,
@@ -3696,9 +3761,15 @@ function saveDraft(){
     burdenPerVisit: Math.round(qb.calc.burdenPerVisit),
     suppliesPerVisit: Math.round(qb.calc.suppliesPerVisit),
     overheadPerVisit: Math.round(qb.calc.overheadPerVisit),
-    addonsPerVisit: Math.round(qb.calc.addonCost),
+     addonsPerVisit: Math.round(qb.calc.addonCost),
+     annualLabor: Math.round(qb.calc.annualLabor),
+     annualBurden: Math.round(qb.calc.annualBurden),
+     annualSupplies: Math.round(qb.calc.annualSupplies),
+     annualOverhead: Math.round(qb.calc.annualOverhead),
+     annualAddons: Math.round(qb.calc.annualAddons),
+     annualDirectCost: Math.round(qb.calc.annualDirect),
     status:'draft', version:1,
-    versions:[{v:1,total:Math.round(qb.calc.finalMonthly),date:'Today',iso:new Date().toISOString(),monthly:Math.round(qb.calc.finalMonthly),annual:Math.round(qb.calc.finalAnnual),calcMonthly:Math.round(qb.calc.monthly),override:qb.override?{value:Math.round(qb.override.value),reason:qb.override.reason}:null,cleaners:qb.calc.cleaners,hoursPerVisit:qb.calc.hoursPerVisit.toFixed(1),profileId:qb.profileId}],
+     versions:[{v:1,total:Math.round(qb.calc.finalMonthly),date:'Today',iso:new Date().toISOString(),monthly:Math.round(qb.calc.finalMonthly),annual:Math.round(qb.calc.finalAnnual),calcMonthly:Math.round(qb.calc.monthly),override:qb.override?{value:Math.round(qb.override.value),reason:qb.override.reason}:null,cleaners:qb.calc.cleaners,hoursPerVisit:qb.calc.hoursPerVisit.toFixed(1),profileId:qb.profileId,workspaceId:state.workspaceId}],
     date:'Today', modified:'now',
     // P1-4: machine-readable timestamps for reliable sorting/history
     createdIso: new Date().toISOString(),
@@ -3802,7 +3873,8 @@ function commitRevise(){
       cleaners: newQ.cleaners,
       hoursPerVisit: newQ.hoursPerVisit,
       profileId: newQ.profileId,
-      margin: newQ.margin
+      margin: newQ.margin,
+      workspaceId: newQ.workspaceId
     };
     existing.versions.push(newVer);
     existing.version = newVer.v;
@@ -3819,6 +3891,15 @@ function commitRevise(){
     existing.suppliesPerVisit = newQ.suppliesPerVisit;
     existing.overheadPerVisit = newQ.overheadPerVisit;
     existing.addonsPerVisit = newQ.addonsPerVisit;
+    existing.workspaceId = newQ.workspaceId;
+    existing.addons = newQ.addons;
+    existing.visitsPerMonth = newQ.visitsPerMonth;
+    existing.annualLabor = newQ.annualLabor;
+    existing.annualBurden = newQ.annualBurden;
+    existing.annualSupplies = newQ.annualSupplies;
+    existing.annualOverhead = newQ.annualOverhead;
+    existing.annualAddons = newQ.annualAddons;
+    existing.annualDirectCost = newQ.annualDirectCost;
     existing.areas = newQ.areas;
     existing.tasks = newQ.tasks;
     existing.modified = 'Just now';
@@ -4007,7 +4088,7 @@ function renderProposal(q, viewVer){
     annual: hist.annual!=null?hist.annual:(hist.total||0)*12,
     cleaners: hist.cleaners!=null?hist.cleaners:q.cleaners,
     hoursPerVisit: hist.hoursPerVisit!=null?hist.hoursPerVisit:q.hoursPerVisit,
-    visitsPerMonth: q.visitsPerMonth,
+    visitsPerMonth: q.visitsPerMonth || (q.frequency ? (q.frequency * 4.33).toFixed(1) : '—'),
     margin: hist.margin!=null?hist.margin:q.margin,
     calcMonthly: hist.calcMonthly,
     override: hist.override,
@@ -4018,7 +4099,7 @@ function renderProposal(q, viewVer){
     annual: eff?eff.annual:q.annual,
     cleaners: eff?eff.cleaners:q.cleaners,
     hoursPerVisit: eff?eff.hoursPerVisit:q.hoursPerVisit,
-    visitsPerMonth: q.visitsPerMonth,
+    visitsPerMonth: q.visitsPerMonth || (q.frequency ? (q.frequency * 4.33).toFixed(1) : '—'),
     margin: eff?eff.margin:q.margin,
     override: eff?(eff.override!==undefined?eff.override:q.override):q.override,
     calcMonthly: eff?(eff.calcMonthly!==undefined?eff.calcMonthly:q.calcMonthly):q.calcMonthly,
@@ -4065,11 +4146,11 @@ function renderProposal(q, viewVer){
     <div class="p-shell">
       <div class="p-cover">
         <div class="pb-logo"><div class="pbm">${esc(org.initial)}</div><div class="pbn">${esc(org.name)}</div></div>
-        <div class="pdpmeta">Prepared for ${esc(q.companyName||'—')}</div>
+        <div class="pdpmeta">Prepared for ${esc(q.companyName||'—')}${q.workspaceId ? '<br><small>Workspace: '+esc(q.workspaceId)+'</small>' : ''}</div>
         <h1>Commercial Cleaning<br>Proposal</h1>
         <div class="pd-prop">${esc(q.propertyName)}</div>
         <div class="pd-foot">
-          <div><b>Proposal</b><br>${esc(q.id)} · ${esc(disp.versionLabel)}</div>
+          <div><b>Proposal</b><br>${esc(q.id)} · ${esc(disp.versionLabel)}${q.workspaceId ? '<br><small>Workspace: '+esc(q.workspaceId)+'</small>' : ''}</div>
           <div><b>Profile</b><br>${esc(q.profileName||'Standard')}</div>
           <div><b>Date</b><br>${esc(q.date||'Today')}</div>
         </div>
@@ -4128,7 +4209,7 @@ function renderProposal(q, viewVer){
           <table>
             <thead><tr><th></th><th>Essential</th><th class="featured">Professional</th><th>Premium</th></tr></thead>
             <tbody>
-              <tr><td>Cleaning frequency</td><td>${freqChipEnglish((q.visitsPerMonth)*0.6)}</td><td class="featured">${freqChipEnglish(q.visitsPerMonth)}</td><td>${freqChipEnglish(q.visitsPerMonth*1.4)}</td></tr>
+              <tr><td>Cleaning frequency</td><td>${freqChipEnglish((disp.visitsPerMonth)*0.6)}</td><td class="featured">${freqChipEnglish(disp.visitsPerMonth)}</td><td>${freqChipEnglish(disp.visitsPerMonth*1.4)}</td></tr>
               <tr><td>Restroom service</td><td>Standard</td><td class="featured">Enhanced</td><td>Premium</td></tr>
               <tr><td>Deep cleaning</td><td>Annual</td><td class="featured">Monthly</td><td>Bi-weekly</td></tr>
               <tr><td>Windows (interior)</td><td>—</td><td class="featured">Quarterly</td><td>Monthly</td></tr>
@@ -4174,13 +4255,17 @@ function renderProposal(q, viewVer){
             <div class="pl">Monthly service investment</div>
             <div class="pp tabnum">${cur}${Math.round(disp.monthly).toLocaleString()}</div>
             ${disp.override && disp.calcMonthly ? `<p class="hint tabnum" style="margin-top:6px">Final pricing adjusted from the calculated ${cur}${Math.round(disp.calcMonthly).toLocaleString()}/mo and confirmed by ${esc(org.name)}.</p>` : ''}
-            <div class="pa tabnum">Annual contract value: <b>${cur}${Math.round(disp.annual).toLocaleString()}</b><br>Effective rate: <b>${cur}${(disp.monthly/q.sqft).toFixed(3)}/sq ft/month</b></div>
+            <div class="pa tabnum">Annual contract value: <b>${cur}${Math.round(disp.annual).toLocaleString()}</b><br>Effective rate: <b>${cur}${(q.sqft>0 ? (disp.monthly/q.sqft).toFixed(3) : '—')}/sq ft/month</b></div>
           </div>
           <div class="p-econ">
             <h3>Contract economics (annualized)</h3>
             <div class="erow"><span>Annual revenue</span><b class="tabnum">${cur}${Math.round(disp.annual).toLocaleString()}</b></div>
-            <div class="erow"><span>Estimated annual direct cost</span><b class="tabnum">${cur}${Math.round(disp.annual-(disp.annual*disp.margin/100)).toLocaleString()}</b></div>
-            <div class="erow gross"><span>Annual gross profit</span><b class="tabnum">${cur}${Math.round(disp.annual*disp.margin/100).toLocaleString()}</b></div>
+            <div class="erow"><span>Annual labor cost</span><b class="tabnum">${cur}${Math.round(q.annualLabor||0).toLocaleString()}</b></div>
+            <div class="erow"><span>Annual burden &amp; overhead</span><b class="tabnum">${cur}${Math.round((q.annualBurden||0)+(q.annualOverhead||0)).toLocaleString()}</b></div>
+            <div class="erow"><span>Annual supplies</span><b class="tabnum">${cur}${Math.round(q.annualSupplies||0).toLocaleString()}</b></div>
+            <div class="erow"><span>Add-ons (annual)</span><b class="tabnum">${cur}${Math.round(q.annualAddons||0).toLocaleString()}</b></div>
+            <div class="erow"><span>Estimated annual direct cost</span><b class="tabnum">${cur}${Math.round(q.annualDirectCost||0).toLocaleString()}</b></div>
+            <div class="erow gross"><span>Annual gross profit</span><b class="tabnum">${cur}${Math.round(disp.annual - (q.annualDirectCost||0)).toLocaleString()}</b></div>
             <div class="erow" style="margin-top:6px"><span>Gross margin</span><b class="tabnum">${disp.margin}%</b></div>
           </div>
           <p class="hint" style="margin-top:14px">${pkg} package · profile: <b>${esc(q.profileName||'Standard')}</b>. Cost basis available on request. Pricing snapshot ${esc(disp.versionLabel)}.</p>
@@ -4222,15 +4307,6 @@ function renderProposal(q, viewVer){
       <div class="p-foot"><b>${esc(org.footer)}</b></div>
     </div>
   `;
-}
-
-function freqChipEnglish(v){
-  if(v>=22) return 'Daily';
-  if(v>=15) return '5 nights/wk';
-  if(v>=10) return '3 nights/wk';
-  if(v>=6) return 'Twice weekly';
-  if(v>=3) return 'Weekly';
-  return 'Bi-weekly';
 }
 
 function freqChipEnglish(v){
@@ -4577,6 +4653,7 @@ function commitProfile(){
   const id = document.getElementById('prId').value || ('p_'+Date.now());
   const p = state.profiles.find(x=>x.id===id) || {};
   p.id = id;
+  p.workspaceId = state.workspaceId;
   p.name = document.getElementById('prName').value.trim()||'Untitled profile';
   p.wage = +document.getElementById('prWage').value||18;
   p.burden = +document.getElementById('prBurden').value||15;
@@ -4726,7 +4803,7 @@ function escAttr(s){ return esc(s); }
 // semantics (quotes, backslashes, newlines, \u2028/\u2029); esc() then makes
 // the result safe as HTML attribute content.
 function escJs(s){ return esc(JSON.stringify(s==null?'':String(s))); }
-function cap(s){ return (s||'').charAt(0).toUpperCase()+s.slice(1); }
+function cap(s){ s = s||''; return s.charAt(0).toUpperCase()+s.slice(1); }
 function initials(n){ return (n||'').split(' ').map(p=>p[0]).slice(0,2).join('').toUpperCase(); }
 function darken(hex){ if(hex[0]!=='#'||hex.length!==7) return '#a3532a'; const r=parseInt(hex.slice(1,3),16), g=parseInt(hex.slice(3,5),16), b=parseInt(hex.slice(5,7),16); const f=c=>Math.max(0,Math.round(c*0.78)); return '#'+[f(r),f(g),f(b)].map(c=>c.toString(16).padStart(2,'0')).join(''); }
 function lighten(hex){ if(hex[0]!=='#'||hex.length!==7) return '#f3e3d2'; const r=parseInt(hex.slice(1,3),16), g=parseInt(hex.slice(3,5),16), b=parseInt(hex.slice(5,7),16); const f=c=>Math.min(255,Math.round(c+(255-c)*0.85)); return '#'+[f(r),f(g),f(b)].map(c=>c.toString(16).padStart(2,'0')).join(''); }
@@ -4825,28 +4902,68 @@ console.log('[CleanBid] ready v2');
     document.getElementById('workspacePicker').classList.add('hidden');
   };
 
-  window.selectWorkspace = async function(workspaceId) {
-    window.closeWorkspacePicker();
+  // Central workspace switch routine. Persists the OUTGOING workspace first,
+  // then loads a FRESH state for the target workspace (replace, never merge).
+  async function applyWorkspace(workspaceId) {
+    const isDemoTarget = workspaceId === 'demo-workspace';
+    // Persist the currently active (real) workspace before changing context.
+    // Skip when leaving demo mode — demo is saved separately by enterDemo().
+    if (!window.__cleanbid_is_demo) {
+      try { await saveStateToDb(); } catch (e) { /* non-fatal */ }
+    }
+    // Clear the demo flag for any real workspace so loadStateFromDb() actually
+    // reloads (it early-returns while the demo flag is set). This is what keeps
+    // demo data from leaking into a real workspace after a switch.
+    window.__cleanbid_is_demo = isDemoTarget;
     if (window.__cleanbid_db && window.__cleanbid_db.setCurrentWorkspaceId) {
       window.__cleanbid_db.setCurrentWorkspaceId(workspaceId);
     }
-    const ws = window.__cleanbid_current_workspace;
-    if (ws) {
-      window.__cleanbid_current_workspace = ws;
+    state.workspaceId = workspaceId;
+    if (!window.__cleanbid_current_workspace || window.__cleanbid_current_workspace.id !== workspaceId) {
+      window.__cleanbid_current_workspace = window.__cleanbid_current_workspace || { id: workspaceId, name: workspaceId, role: 'estimator' };
+      window.__cleanbid_current_workspace.id = workspaceId;
     }
+    // enterApp(false) -> loadStateFromDb() performs the workspace-key REPLACE.
     await enterApp(false);
+  }
+
+  // Listen for the architecture-level workspace:switch event so that any
+  // caller (e.g. src/workspace.js switchWorkspace) triggers a full reload.
+  window.addEventListener('workspace:switch', async (e) => {
+    const id = e && e.detail && e.detail.workspaceId;
+    if (id) await applyWorkspace(id);
+  });
+
+  window.selectWorkspace = async function(workspaceId) {
+    window.closeWorkspacePicker();
+    await applyWorkspace(workspaceId);
   };
 
-  // Demo mode - completely isolated
+  // Demo mode - completely isolated (separate storage key, separate workspace)
   window.enterDemo = async function() {
     console.log('[CleanBid] Entering demo mode (isolated)');
     window.__cleanbid_is_demo = true;
     window.__cleanbid_is_authenticated = false;
-    
+
+    // Demo data lives under its own storage key and its own workspace id, so
+    // it can never merge into (or be contaminated by) a real workspace.
+    state.workspaceId = 'demo-workspace';
+    window.__cleanbid_current_workspace = {
+      id: 'demo-workspace',
+      name: 'Demo Workspace',
+      role: 'admin',
+    };
+    window.__cleanbid_user = {
+      id: 'demo-user',
+      email: 'demo@cleanbid.app',
+      full_name: 'Demo User',
+      role: 'admin',
+    };
+
     // Load demo state from separate storage
     const demoState = window.__cleanbid_db ? await window.__cleanbid_db.loadDemoState() : null;
     if (demoState) {
-      Object.assign(state, demoState);
+      replaceWorkspaceKeys(demoState);
     } else {
       // First time demo - seed and save to demo storage
       seedDemo();
@@ -4854,22 +4971,8 @@ console.log('[CleanBid] ready v2');
         await window.__cleanbid_db.saveDemoState(state);
       }
     }
-    
-    // Set demo user
-    window.__cleanbid_user = {
-      id: 'demo-user',
-      email: 'demo@cleanbid.app',
-      full_name: 'Demo User',
-      role: 'admin',
-    };
-    
-    // Set demo workspace
-    window.__cleanbid_current_workspace = {
-      id: 'demo-workspace',
-      name: 'Demo Workspace',
-      role: 'admin',
-    };
-    
+
+    setCurrentUser();
     await enterApp(false);
   };
 
@@ -4930,6 +5033,7 @@ console.log('[CleanBid] ready v2');
         if (window.__cleanbid_db && window.__cleanbid_db.setCurrentWorkspaceId) {
           window.__cleanbid_db.setCurrentWorkspaceId(workspaces[0].id);
         }
+        state.workspaceId = workspaces[0].id;
         await enterApp(false);
       } else {
         window.showWorkspacePicker(workspaces);
@@ -4961,6 +5065,7 @@ console.log('[CleanBid] ready v2');
       if (window.__cleanbid_db && window.__cleanbid_db.setCurrentWorkspaceId) {
         window.__cleanbid_db.setCurrentWorkspaceId(workspace.id);
       }
+      state.workspaceId = ws.id;
       toast('Workspace created!', 'success');
       await enterApp(false);
     } catch (error) {
@@ -5023,6 +5128,7 @@ console.log('[CleanBid] ready v2');
           if (window.__cleanbid_db && window.__cleanbid_db.setCurrentWorkspaceId) {
             window.__cleanbid_db.setCurrentWorkspaceId(workspaces[0].id);
           }
+          state.workspaceId = workspaces[0].id;
           document.getElementById('authLoading').classList.add('hidden');
           await enterApp(false);
         } else {
@@ -5048,11 +5154,14 @@ console.log('[CleanBid] ready v2');
   import { initDb, saveState, loadState, loadDemoState, saveDemoState, setCurrentWorkspaceId, getDbMode, flushSave } from './src/db.js';
   import { initWorkspace, getWorkspaces, createNewWorkspace } from './src/workspace.js';
   import { bootstrap } from './src/main.js';
+  import * as StateApi from './src/state.js';
 
   window.__cleanbid_auth = { initAuth, signUp, signIn, signOut, getCurrentUser, getSession };
   window.__cleanbid_db = { initDb, saveState, loadState, loadDemoState, saveDemoState, setCurrentWorkspaceId, getDbMode, flushSave };
   window.__cleanbid_workspace = { initWorkspace, getWorkspaces, createNewWorkspace };
   window.__cleanbid_bootstrap = bootstrap;
+  // Canonical workspace state-boundary helpers (used by loadStateFromDb).
+  window.__cleanbid_stateapi = StateApi;
 
   // Trigger auth flow now that modules are registered
   if (window.__cleanbid_initAuthFlow) {

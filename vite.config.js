@@ -19,5 +19,8 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
+    // Only collect the ES-module suite; the root *.test.cjs files are run
+    // directly with `node` (they call process.exit and are not vitest specs).
+    include: ['tests/**/*.{test,spec}.{js,mjs}'],
   },
 });

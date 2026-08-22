@@ -1,24 +1,36 @@
 /**
  * CleanBid Data Access Layer
- * 
+ *
  * Dual-mode: local (localStorage) or Supabase (cloud).
- * 
+ *
  * IMPORTANT RULES:
  * 1. Never silently fall back from authenticated cloud mode to localStorage.
- * 2. In local mode, workspace_id is a single fixed workspace.
- * 3. In cloud mode, workspace_id comes from the authenticated session.
+ * 2. In local mode, state is namespaced per workspace id.
+ * 3. In cloud mode, workspace_id comes from the authenticated session / the
+ *    active workspace, and every query is scoped by workspace_id (RLS enforces
+ *    this server-side; the client never authorizes by id alone).
  * 4. All write operations are debounced in cloud mode to avoid excessive API calls.
  */
 
 import { isCloud, getCurrentUser, getUserWorkspaces } from './auth.js';
+import { workspaceStorageKey, defaultWorkspaceData } from './state.js';
+import { supabase } from './supabase.js';
 
 const LOCAL_STORAGE_KEY = 'cleanbid_v3';
 const DEMO_STORAGE_KEY = 'cleanbid_demo_v3';
 
 let dbMode = null; // 'local' | 'supabase' | null (uninitialized)
-let supabase = null;
 let currentWorkspaceId = null;
 let saveTimeout = null;
+
+/**
+ * Local storage is namespaced per workspace so that a switch never reads
+ * another workspace's blob. A null/empty currentWorkspaceId maps to the
+ * legacy shared key (single-workspace local mode + migration compatibility).
+ */
+function localStoreKey() {
+  return workspaceStorageKey(LOCAL_STORAGE_KEY, currentWorkspaceId);
+}
 
 /**
  * Initialize the database layer.
@@ -26,32 +38,24 @@ let saveTimeout = null;
 export async function initDb() {
   if (dbMode !== null) return dbMode;
 
-  if (isCloud()) {
+  if (isCloud() && supabase) {
     try {
-      // Dynamic import to avoid requiring Supabase in local mode
-      const { createClient } = await import('@supabase/supabase-js');
-      supabase = createClient(
-        import.meta.env.VITE_SUPABASE_URL,
-        import.meta.env.VITE_SUPABASE_ANON_KEY
-      );
-
-      // Get user's workspaces
+      // Pick an initial active workspace: prefer a saved preference that is
+      // still one of the user's memberships; otherwise the first membership.
       const workspaces = await getUserWorkspaces();
-      if (workspaces.length > 0) {
-        currentWorkspaceId = workspaces[0].id;
-      }
+      const saved = safeGetActivePref();
+      const active = workspaces.find((w) => w.id === saved) || workspaces[0];
+      if (active) currentWorkspaceId = active.id;
 
       dbMode = 'supabase';
       console.log('[CleanBid DB] Initialized in Supabase mode');
       return dbMode;
     } catch (error) {
       console.error('[CleanBid DB] Failed to initialize Supabase:', error);
-      // If we were explicitly authenticated but Supabase failed, DO NOT fall back
       const user = getCurrentUser();
       if (user) {
         throw new Error('Authenticated user but Supabase connection failed. Cannot fall back to local mode.');
       }
-      // Only fall back to local if there's no authenticated user
       dbMode = 'local';
       console.log('[CleanBid DB] Falling back to local mode (no authenticated user)');
       return dbMode;
@@ -63,45 +67,38 @@ export async function initDb() {
   return dbMode;
 }
 
-/**
- * Get current database mode.
- */
+function safeGetActivePref() {
+  try { return localStorage.getItem('cleanbid_active_workspace') || null; } catch (_) { return null; }
+}
+
+/** Get current database mode. */
 export function getDbMode() {
   return dbMode;
 }
 
-/**
- * Get current workspace ID.
- */
+/** Get current workspace ID. */
 export function getCurrentWorkspaceId() {
   return currentWorkspaceId;
 }
 
-/**
- * Set current workspace ID (for multi-workspace support).
- */
+/** Set current workspace ID (validated by the caller against memberships). */
 export function setCurrentWorkspaceId(workspaceId) {
   currentWorkspaceId = workspaceId;
+  try { localStorage.setItem('cleanbid_active_workspace', workspaceId); } catch (_) { /* ignore */ }
 }
 
-/**
- * Load state from the appropriate backend.
- */
+/** Load state from the appropriate backend. */
 export async function loadState() {
-  if (dbMode === 'supabase') {
-    return loadStateFromSupabase();
-  }
+  if (dbMode === 'supabase') return loadStateFromSupabase();
   return loadStateFromLocal();
 }
 
 /**
- * Save state to the appropriate backend.
- * In Supabase mode, saves are debounced.
+ * Save state to the appropriate backend. In Supabase mode, saves are debounced.
  */
 export async function saveState(state) {
   window.__cleanbid_state = state;
   if (dbMode === 'supabase') {
-    // Debounce saves in cloud mode
     if (saveTimeout) clearTimeout(saveTimeout);
     saveTimeout = setTimeout(() => {
       saveStateToSupabase(state);
@@ -112,9 +109,7 @@ export async function saveState(state) {
   }
 }
 
-/**
- * Immediately flush any pending saves.
- */
+/** Immediately flush any pending saves. */
 export async function flushSave() {
   if (saveTimeout) {
     clearTimeout(saveTimeout);
@@ -130,9 +125,9 @@ export async function flushSave() {
 // LOCAL STORAGE
 // ====================================================================
 
-function loadStateFromLocal() {
+export function loadStateFromLocal() {
   try {
-    const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
+    const raw = localStorage.getItem(localStoreKey());
     if (raw) {
       const parsed = JSON.parse(raw);
       console.log('[CleanBid DB] Loaded state from localStorage');
@@ -147,30 +142,24 @@ function loadStateFromLocal() {
 
 function saveStateToLocal(state) {
   try {
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(state));
+    localStorage.setItem(localStoreKey(), JSON.stringify(state));
   } catch (e) {
     console.error('[CleanBid DB] Failed to save local state:', e);
   }
 }
 
-/**
- * Load demo state from separate storage.
- */
+/** Load demo state from separate storage. */
 export function loadDemoState() {
   try {
     const raw = localStorage.getItem(DEMO_STORAGE_KEY);
-    if (raw) {
-      return JSON.parse(raw);
-    }
+    if (raw) return JSON.parse(raw);
   } catch (e) {
     console.error('[CleanBid DB] Failed to load demo state:', e);
   }
   return null;
 }
 
-/**
- * Save demo state to separate storage.
- */
+/** Save demo state to separate storage. */
 export function saveDemoState(state) {
   try {
     localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify(state));
@@ -179,9 +168,7 @@ export function saveDemoState(state) {
   }
 }
 
-/**
- * Clear demo state.
- */
+/** Clear demo state. */
 export function clearDemoState() {
   localStorage.removeItem(DEMO_STORAGE_KEY);
 }
@@ -190,54 +177,78 @@ export function clearDemoState() {
 // SUPABASE
 // ====================================================================
 
+/**
+ * Load the COMPLETE workspace state from Supabase.
+ *
+ * Fixes the prior cloud-read gap: previously only customers/properties/quotes/
+ * profiles/activity were loaded. Workspace-scoped config (org, pricing,
+ * addons, tasks, areaTypes) lives on the `workspaces` row as JSONB, and the
+ * team (`users`) is derived from `workspace_members`. All entities are scoped
+ * by the active workspace id.
+ */
 async function loadStateFromSupabase() {
-  if (!currentWorkspaceId) {
+  if (!currentWorkspaceId || !supabase) {
     console.log('[CleanBid DB] No workspace selected');
     return null;
   }
 
   try {
     const [
+      wsRes,
       customersRes,
       propertiesRes,
       quotesRes,
       profilesRes,
       activityRes,
+      membersRes,
     ] = await Promise.all([
+      supabase.from('workspaces')
+        .select('branding, pricing_defaults, addons, tasks, area_types')
+        .eq('id', currentWorkspaceId)
+        .maybeSingle(),
       supabase.from('customers').select('*').eq('workspace_id', currentWorkspaceId),
       supabase.from('properties').select('*').eq('workspace_id', currentWorkspaceId),
       supabase.from('quotes').select('*').eq('workspace_id', currentWorkspaceId).order('created_at', { ascending: false }),
       supabase.from('pricing_profiles').select('*').eq('workspace_id', currentWorkspaceId),
       supabase.from('activity_log').select('*').eq('workspace_id', currentWorkspaceId).order('created_at', { ascending: false }).limit(50),
+      supabase
+        .from('workspace_members')
+        .select('role, users(id, email, full_name)')
+        .eq('workspace_id', currentWorkspaceId),
     ]);
 
+    if (wsRes && wsRes.error) throw wsRes.error;
     if (customersRes.error) throw customersRes.error;
     if (propertiesRes.error) throw propertiesRes.error;
     if (quotesRes.error) throw quotesRes.error;
     if (profilesRes.error) throw profilesRes.error;
     if (activityRes.error) throw activityRes.error;
+    if (membersRes.error) throw membersRes.error;
 
-    // Transform database rows to app state format
+    const settings = mapWorkspaceSettingsFromDb(wsRes?.data || {});
     const customers = (customersRes.data || []).map(mapCustomerFromDb);
     const properties = (propertiesRes.data || []).map(mapPropertyFromDb);
     const quotes = (quotesRes.data || []).map(mapQuoteFromDb);
     const profiles = (profilesRes.data || []).map(mapProfileFromDb);
     const activity = (activityRes.data || []).map(mapActivityFromDb);
+    const users = (membersRes.data || []).map(mapMemberToUser);
 
     // Derive customerId for quotes from their property's customer_id
-    const propertyMap = new Map(properties.map(p => [p.id, p.customerId]));
-    quotes.forEach(q => {
+    const propertyMap = new Map(properties.map((p) => [p.id, p.customerId]));
+    quotes.forEach((q) => {
       if (!q.customerId && q.propertyId && propertyMap.has(q.propertyId)) {
         q.customerId = propertyMap.get(q.propertyId);
       }
     });
 
     const state = {
+      ...settings,
       customers,
       properties,
       quotes,
       profiles,
       activity,
+      users,
     };
 
     console.log(`[CleanBid DB] Loaded from Supabase: ${state.customers.length} customers, ${state.quotes.length} quotes`);
@@ -249,42 +260,54 @@ async function loadStateFromSupabase() {
 }
 
 /**
- * Save state to Supabase directly.
+ * Save the COMPLETE workspace state to Supabase.
+ * - Entities (customers/properties/quotes/profiles) are upserted per row.
+ * - Workspace-scoped config (org/pricing/addons/tasks/areaTypes) is written
+ *   to the `workspaces` row via UPDATE (members only, per RLS).
+ * - `users` (team) is managed through workspace_members, not written here.
  */
 export async function saveStateToSupabase(state) {
-  if (!currentWorkspaceId) {
+  if (!currentWorkspaceId || !supabase) {
     console.warn('[CleanBid DB] No workspace ID, skipping save');
     return;
   }
 
   try {
-    // Save customers
-    for (const customer of state.customers || []) {
-      const dbCustomer = mapCustomerToDb(customer, currentWorkspaceId);
-      const { error } = await supabase.from('customers').upsert(dbCustomer);
+    const rows = [
+      ...(state.customers || []).map((c) => mapCustomerToDb(c, currentWorkspaceId)),
+      ...(state.properties || []).map((p) => mapPropertyToDb(p, currentWorkspaceId)),
+      ...(state.quotes || []).map((q) => mapQuoteToDb(q, currentWorkspaceId)),
+      ...(state.profiles || []).map((p) => mapProfileToDb(p, currentWorkspaceId)),
+    ];
+
+    // Upsert entities. We batch by table to keep round-trips low.
+    if (state.customers?.length) {
+      const { error } = await supabase.from('customers').upsert(rows.slice(0, state.customers.length));
+      if (error) throw error;
+    }
+    if (state.properties?.length) {
+      const offset = state.customers.length;
+      const { error } = await supabase.from('properties').upsert(rows.slice(offset, offset + state.properties.length));
+      if (error) throw error;
+    }
+    if (state.quotes?.length) {
+      const offset = state.customers.length + state.properties.length;
+      const { error } = await supabase.from('quotes').upsert(rows.slice(offset, offset + state.quotes.length));
+      if (error) throw error;
+    }
+    if (state.profiles?.length) {
+      const offset = state.customers.length + state.properties.length + state.quotes.length;
+      const { error } = await supabase.from('pricing_profiles').upsert(rows.slice(offset, offset + state.profiles.length));
       if (error) throw error;
     }
 
-    // Save properties
-    for (const property of state.properties || []) {
-      const dbProperty = mapPropertyToDb(property, currentWorkspaceId);
-      const { error } = await supabase.from('properties').upsert(dbProperty);
-      if (error) throw error;
-    }
-
-    // Save quotes
-    for (const quote of state.quotes || []) {
-      const dbQuote = mapQuoteToDb(quote, currentWorkspaceId);
-      const { error } = await supabase.from('quotes').upsert(dbQuote);
-      if (error) throw error;
-    }
-
-    // Save pricing profiles
-    for (const profile of state.profiles || []) {
-      const dbProfile = mapProfileToDb(profile, currentWorkspaceId);
-      const { error } = await supabase.from('pricing_profiles').upsert(dbProfile);
-      if (error) throw error;
-    }
+    // Workspace-scoped config -> workspaces row.
+    const settings = mapWorkspaceSettingsToDb(state);
+    const { error: wsError } = await supabase
+      .from('workspaces')
+      .update(settings)
+      .eq('id', currentWorkspaceId);
+    if (wsError) throw wsError;
 
     console.log('[CleanBid DB] State saved to Supabase');
   } catch (error) {
@@ -294,12 +317,51 @@ export async function saveStateToSupabase(state) {
 }
 
 // ====================================================================
-// MAPPERS (local format <-> database format)
+// WORKSPACE SETTINGS MAPPERS (org/pricing/addons/tasks/areaTypes <-> workspaces JSONB)
+// ====================================================================
+
+function mapWorkspaceSettingsFromDb(row) {
+  const def = defaultWorkspaceData();
+  const org = (row.branding && typeof row.branding === 'object') ? { ...def.org, ...row.branding } : { ...def.org };
+  const pricing = (row.pricing_defaults && typeof row.pricing_defaults === 'object') ? { ...def.pricing, ...row.pricing_defaults } : { ...def.pricing };
+  return {
+    org,
+    pricing,
+    addons: Array.isArray(row.addons) ? row.addons : [],
+    tasks: Array.isArray(row.tasks) ? row.tasks : [],
+    areaTypes: Array.isArray(row.area_types) ? row.area_types : [],
+  };
+}
+
+function mapWorkspaceSettingsToDb(state) {
+  return {
+    branding: state.org || {},
+    pricing_defaults: state.pricing || {},
+    addons: state.addons || [],
+    tasks: state.tasks || [],
+    area_types: state.areaTypes || [],
+  };
+}
+
+function mapMemberToUser(m) {
+  const u = m.users || {};
+  return {
+    id: u.id,
+    name: u.full_name || u.email || 'Team member',
+    email: u.email || '',
+    role: m.role || 'member',
+    lastActive: '—',
+  };
+}
+
+// ====================================================================
+// ENTITY MAPPERS (local format <-> database format)
 // ====================================================================
 
 function mapCustomerFromDb(row) {
   return {
     id: row.id,
+    workspaceId: row.workspace_id,
     company: row.company,
     contact: row.contact,
     email: row.email,
@@ -313,7 +375,7 @@ function mapCustomerFromDb(row) {
 function mapCustomerToDb(customer, workspaceId) {
   return {
     id: customer.id,
-    workspace_id: workspaceId,
+    workspace_id: workspaceId || customer.workspaceId,
     company: customer.company,
     contact: customer.contact,
     email: customer.email,
@@ -328,6 +390,7 @@ function mapCustomerToDb(customer, workspaceId) {
 function mapPropertyFromDb(row) {
   return {
     id: row.id,
+    workspaceId: row.workspace_id,
     customerId: row.customer_id,
     name: row.name,
     address: row.address,
@@ -342,7 +405,7 @@ function mapPropertyFromDb(row) {
 function mapPropertyToDb(property, workspaceId) {
   return {
     id: property.id,
-    workspace_id: workspaceId,
+    workspace_id: workspaceId || property.workspaceId,
     customer_id: property.customerId,
     name: property.name,
     address: property.address,
@@ -358,6 +421,7 @@ function mapPropertyToDb(property, workspaceId) {
 function mapQuoteFromDb(row) {
   return {
     id: row.id,
+    workspaceId: row.workspace_id,
     customerId: null,
     propertyId: row.property_id,
     propertyName: row.property_name,
@@ -407,7 +471,7 @@ function mapQuoteFromDb(row) {
 function mapQuoteToDb(quote, workspaceId) {
   return {
     id: quote.id,
-    workspace_id: workspaceId,
+    workspace_id: workspaceId || quote.workspaceId,
     property_id: quote.propertyId,
     property_name: quote.propertyName,
     company_name: quote.companyName,
@@ -457,6 +521,7 @@ function mapQuoteToDb(quote, workspaceId) {
 function mapProfileFromDb(row) {
   return {
     id: row.id,
+    workspaceId: row.workspace_id,
     name: row.name,
     wage: parseFloat(row.wage),
     burden: parseFloat(row.burden),
@@ -471,7 +536,7 @@ function mapProfileFromDb(row) {
 function mapProfileToDb(profile, workspaceId) {
   return {
     id: profile.id,
-    workspace_id: workspaceId,
+    workspace_id: workspaceId || profile.workspaceId,
     name: profile.name,
     wage: profile.wage,
     burden: profile.burden,
@@ -488,6 +553,7 @@ function mapProfileToDb(profile, workspaceId) {
 function mapActivityFromDb(row) {
   return {
     id: row.id,
+    workspaceId: row.workspace_id,
     avt: '',
     actor: '',
     what: row.action,
