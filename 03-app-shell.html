@@ -1140,6 +1140,14 @@ tbody tr:hover{background:var(--paper-3)}
           </div>
         </div>
       </div>
+
+      <!-- Recent activity — team timeline (rendered by renderDash) -->
+      <div class="card" style="margin-top:14px">
+        <div class="card-head"><h3>Recent&nbsp;<em>activity</em></h3></div>
+        <div id="dashActivity">
+          <div class="empty"><div class="ei">·</div><div class="es">No activity yet.</div></div>
+        </div>
+      </div>
     </section>
 
     <!-- ============== NEW QUOTE BUILDER ============== -->
@@ -4453,6 +4461,23 @@ function renderDash(){
         <div class="eyebrow" style="margin-bottom:6px">Recent comparisons</div>
         ${sample}
       </div>`;
+  }
+
+  // Recent activity timeline — activity entries are recorded across the app
+  // (status changes, saved drafts, versions, imports, proposals); this is the
+  // single place they're displayed.
+  const actHost = document.getElementById('dashActivity');
+  if(actHost){
+    const acts = (state.activity||[]).slice(0,6);
+    if(acts.length===0){
+      actHost.innerHTML = '<div class="empty"><div class="ei">·</div><div class="es">No activity yet.</div></div>';
+    } else {
+      actHost.innerHTML = `<div class="tl" style="padding-left:28px">${acts.map(a=>`
+        <div class="tl-item">
+          <div class="tl-when">${esc(a.time||'')}</div>
+          <div class="tl-what"><b>${esc(a.actor||'Someone')}</b> ${esc(a.what||'')}${a.object?' · <i>'+esc(a.object)+'</i>':''}</div>
+        </div>`).join('')}</div>`;
+    }
   }
   refreshCounters();
 }
