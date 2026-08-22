@@ -1,17 +1,39 @@
 # Data & Backups — Workspace Export / Restore
 
+> **v2 (audit-hardened).** See `supabase-restore-rpc.sql` header for the full P0-1 security model.
+> Format version **2**: adds SHA-256 checksum, self-describing metadata (appVersion,
+> full entity counts incl. activity), skip-and-report entity validation.
+> Restore flow is now two-phase: *Prepare restore* (creates + auto-downloads a
+> complete safety snapshot, keeps last 3) → explicit *Restore now* confirmation.
+> Demo mode blocks real-data restores entirely. Cloud restores execute through
+> the atomic server-side RPC `restore_workspace_backup` — never client upserts.
+
+## Deployment requirement (cloud mode)
+
+Run `supabase-restore-rpc.sql` once in Supabase SQL Editor before enabling
+cloud users. It creates the atomic restore RPC, adds the `workspaces.addons /
+tasks / area_types` columns the db layer always expected, adds WITH CHECK to
+all UPDATE policies, and installs workspace_id-immutability triggers.
+Until applied, cloud restore fails closed (RPC missing ⇒ error, no data change).
+
 **Branch:** `feature/data-export-restore`
-**New files:** `src/backup.js` (canonical logic), `06-backup-restore.test.cjs` (63 checks)
-**Modified:** `03-app-shell.html` (Data & backups card, restore modal, wiring)
+**New files:** `src/backup.js` (canonical logic), `06-backup-restore.test.cjs` (91 checks), `tests/restore-security.test.mjs` (8), `tests/fidelity.test.mjs` (13), `tests/backup-integrity.test.mjs` (16), `supabase-restore-rpc.sql`
+**Modified:** `03-app-shell.html`, `src/db.js`
 
-## The problem
+## Test coverage summary
 
-CleanBid kept 100% of customer, quote, and pricing data in browser
-`localStorage`. Before this feature the app had **zero export capability**
-(no `Blob` / `createObjectURL` anywhere in the shell). Clearing browser
-data, a corrupt profile, or switching machines meant permanent,
-silent loss of every customer and quote. For a product sold outright to
-cleaning-company owners, that is the single fastest way to destroy trust.
+```
+02-pricing-tests.js            115 passed
+04-activity-feed.test.cjs        8 passed
+05-workspace-isolation.test     32 passed
+06-backup-restore.test.cjs      91 passed   ← export/validate/apply/two-phase UX/demo gate/false-zero UI
+tests/workspace-isolation.mjs   12 passed (vitest)
+tests/restore-security.test      8 passed   ← cross-workspace isolation, atomic rollback, ID remap, hard fences
+tests/fidelity.test             13 passed   ← mapper round-trips, nulls/zeros/hostile strings, declared normalizations
+tests/backup-integrity.test     16 passed   ← checksum tamper rejection, hostile entities, snapshot ring, >1000-row pagination
+npm run build                   ✓ clean
+```
+
 
 ## What was built
 

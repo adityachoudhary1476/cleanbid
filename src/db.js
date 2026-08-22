@@ -94,6 +94,31 @@ export async function loadState() {
 }
 
 /**
+ * Fetch ALL activity rows for a workspace using range pagination.
+ * Replaces the old .limit(50) cap which silently truncated history in
+ * every cloud backup/export (audit finding P1-1).
+ */
+async function fetchAllActivity(workspaceId) {
+  const PAGE = 1000;
+  let from = 0;
+  const all = [];
+  for (;;) {
+    const { data, error } = await supabase
+      .from('activity_log')
+      .select('*')
+      .eq('workspace_id', workspaceId)
+      .order('created_at', { ascending: true })
+      .range(from, from + PAGE - 1);
+    if (error) throw error;
+    all.push(...(data || []));
+    if (!data || data.length < PAGE) break;
+    from += PAGE;
+    if (from > 200000) throw new Error('Activity log exceeds sane size (200k rows); refusing to paginate further.');
+  }
+  return all.reverse(); // newest-first, matching previous UI ordering
+}
+
+/**
  * Save state to the appropriate backend. In Supabase mode, saves are debounced.
  */
 export async function saveState(state) {
@@ -199,7 +224,7 @@ async function loadStateFromSupabase() {
       propertiesRes,
       quotesRes,
       profilesRes,
-      activityRes,
+      activityRows, // fully paginated by fetchAllActivity (P1-1)
       membersRes,
     ] = await Promise.all([
       supabase.from('workspaces')
@@ -210,7 +235,7 @@ async function loadStateFromSupabase() {
       supabase.from('properties').select('*').eq('workspace_id', currentWorkspaceId),
       supabase.from('quotes').select('*').eq('workspace_id', currentWorkspaceId).order('created_at', { ascending: false }),
       supabase.from('pricing_profiles').select('*').eq('workspace_id', currentWorkspaceId),
-      supabase.from('activity_log').select('*').eq('workspace_id', currentWorkspaceId).order('created_at', { ascending: false }).limit(50),
+      fetchAllActivity(currentWorkspaceId),
       supabase
         .from('workspace_members')
         .select('role, users(id, email, full_name)')
@@ -222,7 +247,6 @@ async function loadStateFromSupabase() {
     if (propertiesRes.error) throw propertiesRes.error;
     if (quotesRes.error) throw quotesRes.error;
     if (profilesRes.error) throw profilesRes.error;
-    if (activityRes.error) throw activityRes.error;
     if (membersRes.error) throw membersRes.error;
 
     const settings = mapWorkspaceSettingsFromDb(wsRes?.data || {});
@@ -230,7 +254,7 @@ async function loadStateFromSupabase() {
     const properties = (propertiesRes.data || []).map(mapPropertyFromDb);
     const quotes = (quotesRes.data || []).map(mapQuoteFromDb);
     const profiles = (profilesRes.data || []).map(mapProfileFromDb);
-    const activity = (activityRes.data || []).map(mapActivityFromDb);
+    const activity = (activityRows || []).map(mapActivityFromDb);
     const users = (membersRes.data || []).map(mapMemberToUser);
 
     // Derive customerId for quotes from their property's customer_id
@@ -579,3 +603,90 @@ function formatTimeAgo(dateString) {
   if (diffDays < 7) return `${diffDays}d ago`;
   return date.toLocaleDateString();
 }
+
+// ====================================================================
+// CLOUD RESTORE (P0-1) — atomic, server-authoritative workspace replace
+// ====================================================================
+
+/**
+ * Restore a full workspace backup into the ACTIVE workspace via the
+ * `restore_workspace_backup` Postgres RPC.
+ *
+ * Security model:
+ *   - workspace identity is derived SERVER-SIDE from auth.uid() and the
+ *     p_target_workspace argument is verified against workspace_members
+ *     inside the SECURITY DEFINER function. Client-supplied workspace_id
+ *     values inside record payloads are IGNORED by design (the RPC never
+ *     reads them).
+ *   - The whole replace runs inside a single transaction: any failure
+ *     rolls back ALL deletes/inserts (no half-restored workspace, no
+ *     window where another workspace's rows are exposed).
+ *
+ * @param {object} state - restored application state (workspace-owned keys)
+ * @param {string|null} targetWorkspaceId - must equal the active workspace
+ * @returns {Promise<{workspace_id:string, counts:object}>}
+ */
+export async function restoreStateToSupabase(state, targetWorkspaceId) {
+  if (!supabase) throw new Error('Cloud restore requires a configured Supabase backend.');
+  if (!targetWorkspaceId) {
+    targetWorkspaceId = currentWorkspaceId;
+  }
+  if (!targetWorkspaceId || !dbMode) {
+    throw new Error('Cloud restore refused: no active workspace context.');
+  }
+  if (targetWorkspaceId !== currentWorkspaceId) {
+    throw new Error('Cloud restore refused: restore target does not match the ACTIVE workspace.');
+  }
+
+  // Client-supplied workspace_id fields are stripped here AND ignored by the
+  // server function; the server stamps rows with its own derived workspace UUID.
+  const strip = (arr) => (Array.isArray(arr) ? arr.map((r) => {
+    if (!r || typeof r !== 'object') return r;
+    const { workspaceId, workspace_id, ...rest } = r;
+    return rest;
+  }) : []);
+
+  const payload = {
+    org: state.org || {},
+    pricing: state.pricing || {},
+    addons: strip(state.addons),
+    tasks: strip(state.tasks),
+    area_types: strip(state.areaTypes),
+    customers: strip(state.customers),
+    properties: strip(state.properties),
+    quotes: strip(state.quotes),
+    profiles: strip(state.profiles),
+    activity: (Array.isArray(state.activity) ? state.activity : []).map((a) => ({
+      action: a.what || a.action || 'restored activity entry',
+      entity_type: a.entity_type || 'activity',
+      entity_id: a.entity_id !== undefined ? a.entity_id : (a.object ?? null),
+      metadata: a.metadata && typeof a.metadata === 'object' ? a.metadata : {},
+      created_at: typeof a.createdIso === 'string' ? a.createdIso : new Date().toISOString(),
+    })),
+  };
+
+  const { data, error } = await supabase.rpc('restore_workspace_backup', {
+    p_target_workspace: targetWorkspaceId,
+    p_payload: payload,
+  });
+  if (error) throw error;
+  return data || { workspace_id: targetWorkspaceId };
+}
+
+/**
+ * Test-only access to the persistence mappers (used by the round-trip
+ * fidelity suite to prove local<->cloud logical equivalence).
+ */
+export const __mappers = {
+  mapCustomerToDb, mapCustomerFromDb,
+  mapPropertyToDb, mapPropertyFromDb,
+  mapQuoteToDb, mapQuoteFromDb,
+  mapProfileToDb, mapProfileFromDb,
+  mapActivityToDbPayload: (a) => ({
+    action: a.what || a.action || 'restored activity entry',
+    entity_type: a.entity_type || 'activity',
+    entity_id: a.entity_id !== undefined ? a.entity_id : (a.object ?? null),
+    metadata: a.metadata && typeof a.metadata === 'object' ? a.metadata : {},
+    created_at: typeof a.createdIso === 'string' ? a.createdIso : new Date().toISOString(),
+  }),
+};
