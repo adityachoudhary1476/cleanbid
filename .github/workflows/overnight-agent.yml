@@ -25,6 +25,9 @@ concurrency:
   group: overnight-agent
   cancel-in-progress: true
 
+env:
+  REPORT_DIR: reports
+
 jobs:
   overnight:
     runs-on: ubuntu-latest
@@ -45,8 +48,10 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Install Hermes Agent
-        run: pip install --no-input hermes-agent
+      # Install from source: the PyPI release predates the keyless
+      # opencode-free provider.
+      - name: Install Hermes Agent (from source)
+        run: pip install --no-input "git+https://github.com/NousResearch/hermes-agent.git"
 
       - name: Configure Hermes (keyless free provider)
         run: |
@@ -60,9 +65,11 @@ jobs:
               tool_progress_prompt: true
               busy_input_prompt: true
           EOF
+          hermes --version || true
 
-      - name: Run overnight agent
+      - name: Prepare task
         env:
+          TASK: ${{ inputs.task }}
           TASK_FILE: ${{ runner.temp }}/task.txt
         run: |
           if [ -n "$TASK" ]; then
@@ -75,36 +82,45 @@ jobs:
       - name: Run overnight agent
         env:
           TASK_FILE: ${{ runner.temp }}/task.txt
+          OUT_FILE: ${{ runner.temp }}/agent-output.md
         run: |
+          set -o pipefail
           hermes chat -Q --yolo --no-restore-cwd \
             --provider opencode-free -m x-preview-f-free \
             -t terminal,file \
             --max-turns 60 \
-            --query "$(cat "$TASK_FILE")" 2>&1 | tee agent-output.md
-          echo "" >> agent-output.md
-          echo "## Files changed by agent" >> agent-output.md
-          git status --short >> agent-output.md
+            --query "$(cat "$TASK_FILE")" 2>&1 | tee "$OUT_FILE"
+          {
+            echo ""
+            echo "## Files changed by agent"
+            git status --short
+          } >> "$OUT_FILE"
+          mkdir -p "$REPORT_DIR"
+          cp "$OUT_FILE" "$REPORT_DIR/run-$(date +%Y%m%d-%H%M%S).md"
 
       - name: Upload report artifact
         uses: actions/upload-artifact@v4
         with:
           name: overnight-report
-          path: agent-output.md
+          path: reports/
 
-      - name: Commit any changes the agent made
+      # Commits ONLY the dated report file — anything else left in the
+      # tree stays uncommitted (visible in the report's git status).
+      - name: Commit report
         run: |
           git config user.name "overnight-agent"
           git config user.email "adityachoudhary1476@users.noreply.github.com"
-          git add -A
+          git add "$REPORT_DIR"
           if git diff --cached --quiet; then
-            echo "No changes to commit."
+            echo "No report to commit."
           else
-            git commit -m "overnight agent: automated changes"
+            git commit -m "overnight agent: run report [skip ci]"
+            git pull --rebase -q origin ci/overnight-agent || git pull --rebase -q
             git push
           fi
 
-      # Optional: fires only if you later add TELEGRAM_BOT_TOKEN and
-      # TELEGRAM_CHAT_ID as repo secrets. Harmless no-op until then.
+      # Fires only once you add TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID as
+      # repo secrets. Harmless no-op until then.
       - name: Notify Telegram
         env:
           TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -114,11 +130,12 @@ jobs:
             echo "Telegram secrets not set; skipping."
             exit 0
           fi
+          OUT=$(ls -t "$REPORT_DIR"/run-*.md | head -1)
           {
             echo "🌙 Overnight agent finished on cleanbid"
             echo ""
-            tail -c 3500 agent-output.md
-          } > tg_msg.txt
+            tail -c 3500 "$OUT"
+          } > "${{ runner.temp }}/tg_msg.txt"
           curl -s -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
             --data-urlencode "chat_id=${TG_CHAT}" \
-            --data-urlencode "text@tg_msg.txt" > /dev/null && echo "Telegram notified."
+            --data-urlencode "text@${{ runner.temp }}/tg_msg.txt" > /dev/null && echo "Telegram notified."
