@@ -5172,11 +5172,20 @@ console.log('[CleanBid] ready v2');
   window.__cleanbid_is_authenticated = false;
 
   // Auth UI functions
+  window.closeAuthForms = function() {
+    document.getElementById('authForms').classList.add('hidden');
+  };
+
+  // Landing page must stay scrollable: body.no-scroll is only meant for the
+  // in-app view behind open modals, not for the public marketing/landing view.
   window.showAuthForms = function() {
     document.getElementById('authForms').classList.remove('hidden');
     document.getElementById('signinForm').classList.remove('hidden');
     document.getElementById('signupForm').classList.add('hidden');
     document.getElementById('authTitle').textContent = 'Sign In';
+    document.body.classList.remove('no-scroll');
+    document.getElementById('view-login').classList.remove('hidden');
+    document.getElementById('view-app').classList.add('hidden');
   };
 
   window.showSignup = function() {
@@ -5189,10 +5198,6 @@ console.log('[CleanBid] ready v2');
     document.getElementById('signupForm').classList.add('hidden');
     document.getElementById('signinForm').classList.remove('hidden');
     document.getElementById('authTitle').textContent = 'Sign In';
-  };
-
-  window.closeAuthForms = function() {
-    document.getElementById('authForms').classList.add('hidden');
   };
 
   window.showWorkspaceOnboarding = function() {
