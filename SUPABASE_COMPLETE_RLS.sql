@@ -170,3 +170,52 @@ SELECT policyname, cmd, roles, with_check
 FROM pg_policies
 WHERE tablename = 'workspaces'
 ORDER BY cmd;
+
+-- ====================================================================
+-- 9) USER PROFILE MIRRORING
+-- Fixes: FK violation "workspace_memeber_user_id_fkey" on
+--        workspace_members INSERT.
+-- Cause: workspace_members.user_id references public.users(id), but
+--        signups only create a row in auth.users — nothing populated
+--        public.users, so the member insert has no matching parent row.
+-- Fix:   backfill existing auth users into public.users, then keep them
+--        in sync automatically via a trigger on auth.users.
+-- ====================================================================
+
+-- Backfill: every existing auth user gets a public.users row (idempotent)
+INSERT INTO public.users (id, email, full_name)
+SELECT u.id,
+       u.email,
+       COALESCE(u.raw_user_meta_data ->> 'full_name', split_part(u.email, '@', 1))
+FROM auth.users u
+ON CONFLICT (id) DO NOTHING;
+
+-- Keep updated_at fresh when profiles are edited (harmless if column absent)
+-- NOTE: skipped — column presence varies; core fix below is sufficient.
+
+-- Auto-create the mirror row whenever a new user confirms/signs up
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  INSERT INTO public.users (id, email, full_name)
+  VALUES (
+    NEW.id,
+    NEW.email,
+    COALESCE(NEW.raw_user_meta_data ->> 'full_name', split_part(NEW.email, '@', 1))
+  )
+  ON CONFLICT (id) DO NOTHING;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- Verify: you should see YOUR email in this list
+SELECT id, email FROM public.users ORDER BY created_at DESC LIMIT 5;
