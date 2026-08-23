@@ -1559,6 +1559,29 @@ Demo City, USA</textarea></div>
           </div>
         </div>
       </div>
+
+      <!-- ============ DATA & BACKUPS (export / restore) ============ -->
+      <div class="card" style="margin-top:14px">
+        <div class="card-head"><h3>&nbsp;Data &amp; backups</h3></div>
+        <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">
+          <div style="flex:1;min-width:260px">
+            <p class="hint" style="margin-bottom:10px">Your workspace lives in this browser. Download a backup file to keep customers, quotes, and pricing safe — and restore it here anytime, on any machine.</p>
+            <div class="tabnum" style="display:flex;gap:16px;margin-bottom:12px;font-size:13px">
+              <span><b id="bkCountCust">0</b> customers</span>
+              <span><b id="bkCountProp">0</b> properties</span>
+              <span><b id="bkCountQuote">0</b> quotes</span>
+              <span class="muted" id="bkLastExport">no backup yet</span>
+            </div>
+            <div class="row g8">
+              <button class="btn btn-accent btn-sm" onclick="exportBackup()">⬇ Download backup</button>
+              <button class="btn btn-outline btn-sm" onclick="openRestore()">⬆ Restore from file…</button>
+            </div>
+          </div>
+          <div class="hint" id="bkHealthNote" style="flex:1;min-width:220px;border-left:2px solid var(--line);padding-left:14px">
+            A backup you have never tested is not a backup. After exporting, try restoring it once — it takes a second and proves the file works.
+          </div>
+        </div>
+      </div>
     </section>
 
     <!-- ============== AREAS & TASKS ============== -->
@@ -1907,6 +1930,31 @@ Demo City, USA</textarea></div>
     <div class="m-foot">
       <button class="btn btn-outline btn-sm" onclick="closeModal('emailModal')">Cancel</button>
       <button class="btn btn-accent btn-sm" onclick="commitEmail()">Send email →</button>
+    </div>
+  </div>
+</div>
+
+<!-- Restore-from-backup modal -->
+<div class="scrim" id="restoreModal">
+  <div class="modal">
+    <div class="m-head"><h3>Restore from backup</h3><button class="x" onclick="closeModal('restoreModal')">✕</button></div>
+    <div class="m-body">
+      <!-- Step 1: pick file -->
+      <div id="rsStep1">
+        <p class="hint" style="margin-bottom:12px">Pick a CleanBid backup file (<strong>.json</strong>). Nothing is changed until you review the contents and confirm.</p>
+        <input type="file" id="rsFile" accept=".json,application/json" style="display:none">
+        <button class="btn btn-outline btn-sm" onclick="document.getElementById('rsFile').click()">Choose backup file…</button>
+      </div>
+      <!-- Step 2: review summary -->
+      <div id="rsStep2" style="display:none">
+        <div id="rsErrors"></div>
+        <div id="rsSummary"></div>
+        <p class="hint" style="margin-top:10px">Restoring <strong>replaces every record in this workspace</strong> — customers, properties, quotes, pricing rules, profiles, and history. This cannot be undone.</p>
+      </div>
+    </div>
+    <div class="m-foot">
+      <button class="btn btn-outline btn-sm" id="rsCancel">Cancel</button>
+      <button class="btn btn-danger btn-sm hidden" id="rsGo">Replace workspace data</button>
     </div>
   </div>
 </div>
@@ -2413,6 +2461,7 @@ function bootApp(){
   renderTaskTypes();
   loadPricingUI();
   loadBrandingUI();
+  renderDataBackups();
   recalc();
 }
 
@@ -2462,6 +2511,7 @@ function goTo(page){
   document.getElementById('crumbSection').textContent = secMap[page] || 'Workspace';
   document.getElementById('sidebar').classList.remove('m-open');
   window.scrollTo(0,0);
+  if(page === 'branding'){ try{ renderDataBackups(); }catch(e){} }
   if(page === 'newquote' && !_skipBuilderReset){
     resetBuilder();
   }
@@ -3177,6 +3227,279 @@ function showCustomerDetail(id){
   html += `</div>`;
   host.innerHTML = html;
 }
+
+/* ====================================================================
+   DATA & BACKUPS — export / restore
+   Canonical logic lives in src/backup.js (DOM-free, tested). The shell
+   only handles persistence, file download/upload, and rendering.
+==================================================================== */
+function __bkApi(){ return window.__cleanbid_backupapi || null; }
+function __bkSnapshotFallback(){
+  // Minimal export path when the module layer is unavailable (offline dev).
+  const keys=['org','pricing','profiles','areaTypes','tasks','customers','properties','quotes','addons','users','activity'];
+  const data={}; keys.forEach(k=>{ data[k]=JSON.parse(JSON.stringify(state[k])); });
+  return { cleanbid_backup:true, format:1, exportedAt:new Date().toISOString(),
+    workspaceId:state.workspaceId||null, orgName:(state.org&&state.org.name)||'',
+    counts:{ customers:data.customers.length, properties:data.properties.length, quotes:data.quotes.length }, data };
+}
+function __bkApplyFallback(data){
+  const api = window.__cleanbid_stateapi;
+  if(api && typeof api.sanitizeWorkspaceState==='function'){
+    const clean = api.sanitizeWorkspaceState(data);
+    Object.keys(clean).forEach(k=>{ if(k!=='workspaceId') state[k]=JSON.parse(JSON.stringify(clean[k])); });
+  } else {
+    Object.keys(data).forEach(k=>{ state[k]=JSON.parse(JSON.stringify(data[k])); });
+  }
+  return state;
+}
+
+async function exportBackup(){
+  try{
+    saveStateToDb(); // persist current edits first — the file must match what's on screen
+  }catch(e){ /* non-fatal: still export live state */ }
+  const api=__bkApi();
+  let backup;
+  try{
+    backup = api ? api.buildBackup(state) : __bkSnapshotFallback();
+  }catch(e){
+    toast('Could not build a backup from current data.','danger'); return;
+  }
+  try{
+    if(api && typeof api.sealBackup==='function'){ await api.sealBackup(backup); }
+    const blob=new Blob([JSON.stringify(backup,null,2)],{type:'application/json'});
+    const url=URL.createObjectURL(blob);
+    const d=new Date();
+    const pad=n=>String(n).padStart(2,'0');
+    // Timestamp includes time so multiple same-day exports never collide (P2-4).
+    const stamp=d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())
+      +'_'+pad(d.getHours())+pad(d.getMinutes());
+    const slug=((backup.orgName||'workspace').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'')||'workspace');
+    const a=document.createElement('a');
+    a.href=url; a.download='cleanbid-backup-'+slug+'-'+stamp+'.json';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),4000);
+    try{
+      localStorage.setItem(_bkLastExportKey(),d.toISOString());
+    }catch(e){}
+    renderDataBackups();
+    toast('Backup downloaded — keep it somewhere safe (cloud drive or email it to yourself).','success');
+  }catch(e){
+    toast('Download failed: '+e.message,'danger');
+  }
+}
+
+function _bkLastExportKey(){ return 'cleanbid_last_export_'+(state.workspaceId||'local'); }
+
+function renderDataBackups(){
+  const api=__bkApi();
+  // P2-2: an ERROR must never render as "0 customers / 0 quotes" — that
+  // false zero invites panic. Show an explicit failure line instead.
+  let c=null;
+  try{
+    c = api ? api.summarizeState(state)
+            : { customers:(state.customers||[]).length, properties:(state.properties||[]).length, quotes:(state.quotes||[]).length };
+    if(!c || typeof c.customers!=='number') throw new Error('summary shape invalid');
+  }catch(e){
+    if(document.getElementById('bkCountCust')){
+      ['bkCountCust','bkCountProp','bkCountQuote'].forEach(id=>{ const el=document.getElementById(id); if(el) el.textContent='—'; });
+      const note=document.getElementById('bkLastExport');
+      if(note){ note.textContent='unable to calculate workspace summary'; note.style.color='var(--bad)'; }
+      return;
+    }
+  }
+  if(document.getElementById('bkCountCust')){
+    document.getElementById('bkCountCust').textContent=String(c.customers);
+    document.getElementById('bkCountProp').textContent=String(c.properties);
+    document.getElementById('bkCountQuote').textContent=String(c.quotes);
+    let label='no backup yet';
+    try{
+      const iso=localStorage.getItem(_bkLastExportKey());
+      if(iso){ const t=new Date(iso); if(!isNaN(t)) label='last export: '+t.toLocaleDateString(undefined,{month:'short',day:'numeric'})+', '+t.toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'}); }
+    }catch(e){}
+    const note=document.getElementById('bkLastExport');
+    note.textContent=label; note.style.color='';
+  }
+}
+
+let _rsPending=null;    // validated parsed backup awaiting confirmation
+let _rsPhase='review';  // 'review' -> 'armed' (safety snapshot exists) -> restored
+
+function openRestore(){
+  _rsPending=null;
+  _rsPhase='review';
+  document.getElementById('rsStep1').style.display='';
+  document.getElementById('rsStep2').style.display='none';
+  document.getElementById('rsErrors').innerHTML='';
+  document.getElementById('rsSummary').innerHTML='';
+  document.getElementById('rsGo').classList.add('hidden');
+  document.getElementById('rsCancel').textContent='Cancel';
+  document.getElementById('rsFile').value='';
+  // P1-4: make the demo boundary visible BEFORE the user invests effort.
+  if(window.__cleanbid_is_demo){
+    document.getElementById('rsSummary').innerHTML='<div class="hint" style="color:var(--warn);font-weight:600">⚠ Demo mode: restoring real backups into the demo is blocked. Sign out and sign in to your workspace first.</div>';
+  }
+  openModal('restoreModal');
+}
+window.openRestore=openRestore;
+
+function _fmtWhen(iso){ try{ const t=new Date(iso); return isNaN(t)?'(unknown date)':t.toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'}); }catch(e){ return '(unknown date)'; } }
+
+function _rsShowResult(v){
+  document.getElementById('rsStep1').style.display='none';
+  document.getElementById('rsStep2').style.display='';
+  const errHost=document.getElementById('rsErrors'), sumHost=document.getElementById('rsSummary');
+  if(!v.ok){
+    errHost.innerHTML=v.errors.map(e=>'<div class="hint" style="color:var(--bad);font-weight:600;margin-bottom:6px">✕ '+esc(e)+'</div>').join('');
+    sumHost.innerHTML='<p class="hint">No changes were made. If this file came from another app or an email attachment, double-check it is a CleanBid backup (.json).</p>';
+    document.getElementById('rsGo').classList.add('hidden');
+    return;
+  }
+  const s=v.summary, c=(s&&s.counts)||{};
+  let html='<div class="hint" style="margin-bottom:10px">This backup looks valid:'
+    +'<div class="tabnum" style="display:flex;gap:16px;margin-top:8px;font-size:13px;color:var(--text);flex-wrap:wrap">'
+    +'<span><b>'+(c.customers||0)+'</b> customers</span><span><b>'+(c.properties||0)+'</b> properties</span><span><b>'+(c.quotes||0)+'</b> quotes</span>'
+    +(c.activity!==undefined?'<span><b>'+c.activity+'</b> activity entries</span>':'')
+    +(c.profiles!==undefined?'<span><b>'+c.profiles+'</b> profiles</span>':'')
+    +'</div>'
+    +(s.orgName?'<div style="margin-top:6px">From workspace: <b>'+esc(s.orgName)+'</b></div>':'')
+    +(s.exportedAt?'<div>Exported: <b>'+_fmtWhen(s.exportedAt)+'</b>'+(s.appVersion?' · app v'+esc(s.appVersion):'')+'</div>':'')
+    +'</div>';
+  (v.warnings||[]).forEach(w=>{ html+='<div class="hint" style="color:var(--warn);margin-top:6px">⚠ '+esc(w)+'</div>'; });
+  sumHost.innerHTML=html;
+  errHost.innerHTML='';
+  document.getElementById('rsGo').classList.remove('hidden');
+  document.getElementById('rsGo').textContent='Prepare restore';
+}
+
+function _downloadJson(obj,filename){
+  const blob=new Blob([JSON.stringify(obj,null,2)],{type:'application/json'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url; a.download=filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),4000);
+}
+
+/**
+ * Phase handler for the confirm button.
+ * review  -> build SAFETY SNAPSHOT first (P0-2). On success: auto-download
+ *            the safety file, tell the user exactly what was created, and
+ *            ARM the destructive step behind a second explicit click.
+ *            On failure: DO NOT RESTORE.
+ * armed   -> execute the restore (cloud RPC or local replace).
+ */
+async function onRestoreConfirm(){
+  if(!_rsPending || !_rsPending.ok) return;
+  const go=document.getElementById('rsGo');
+  const api=__bkApi();
+
+  // ---- P1-4: demo-mode boundary. Real data never enters demo storage.
+  if(window.__cleanbid_is_demo){
+    toast('Blocked: you are in Demo mode. Exit the demo and sign in to your workspace to restore real data.','warn');
+    closeModal('restoreModal'); _rsPending=null;
+    return;
+  }
+
+  if(_rsPhase==='review'){
+    // ---------- SAFETY SNAPSHOT GATE ----------
+    go.disabled=true;
+    let snap=null;
+    try{
+      if(!(api && typeof api.createSafetySnapshot==='function')) throw new Error('safety snapshot module unavailable');
+      snap=api.createSafetySnapshot(state);
+      const latest=api.listSafetySnapshots()[0];
+      if(!latest || !latest.payload) throw new Error('snapshot verification failed');
+      if(api.sealBackup){ await api.sealBackup(latest.payload); writeSnapshotStoreBack(api,latest); }
+      // Immediately downloadable (P0-2 requirement #4)
+      const d=new Date(snap.savedAt);
+      const pad=n=>String(n).padStart(2,'0');
+      _downloadJson(latest.payload,'cleanbid-SAFETY-'+(d.getFullYear())+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+'_'+pad(d.getHours())+pad(d.getMinutes())+'.json');
+    }catch(snapErr){
+      console.error('[CleanBid] safety snapshot failed:',snapErr);
+      toast('Safety snapshot FAILED ('+snapErr.message+') — restore aborted. Your data is unchanged.','danger');
+      go.disabled=false;
+      return; // DO NOT RESTORE
+    }
+    go.disabled=false;
+    // ---------- ARM: second explicit confirmation ----------
+    _rsPhase='armed';
+    const when=new Date(snap.savedAt);
+    const label='CleanBid — '+when.toLocaleDateString(undefined,{month:'short',day:'numeric'})+', '+when.toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'});
+    const sumHost=document.getElementById('rsSummary');
+    sumHost.innerHTML='<div class="hint" style="color:var(--good);font-weight:600;margin-bottom:6px">✓ Safety backup created: '+esc(label)+'</div>'
+      +'<div class="hint" style="color:var(--bad);font-weight:600;margin-bottom:6px">Restore will replace the current workspace. This cannot be undone.</div>'
+      +'<div class="hint" style="margin-bottom:6px">The safety file was downloaded just now — keep it. It can restore today\'s state even if this restore goes wrong.</div>'
+      +sumHost.innerHTML;
+    document.getElementById('rsGo').textContent='Restore now — replace workspace';
+    toast('Safety backup created: '+label+'.','success');
+    return;
+  }
+
+  if(_rsPhase==='armed'){
+    go.disabled=true;
+    try{
+      const backupData=_rsPending.parsed && _rsPending.parsed.data;
+      if(!backupData || typeof backupData!=='object'){ throw new Error('backup payload is missing or unreadable'); }
+      if(api && typeof api.applyBackup==='function'){ api.applyBackup(state,backupData); }
+      else{ __bkApplyFallback(backupData); }
+
+      // ---- P0-1: cloud mode replaces the ACTIVE workspace atomically
+      // server-side. Local mode persists to namespaced localStorage.
+      if(window.__cleanbid_db && typeof window.__cleanbid_db.restoreStateToCloud==='function'
+         && window.__cleanbid_db.getDbMode && window.__cleanbid_db.getDbMode()==='supabase'){
+        await window.__cleanbid_db.restoreStateToCloud(state, state.workspaceId);
+      } else {
+        await saveStateToDb();
+      }
+
+      state.activity.unshift({avt:'JD',actor:(state.me&&state.me.name)||'You',what:'restored workspace from backup made',object:_fmtWhen(_rsPending.exportedAt),time:'just now'});
+      bootApp();
+      closeModal('restoreModal');
+      toast('Workspace restored from backup.','success');
+    }catch(e){
+      console.error('[CleanBid] restore failed:',e);
+      toast('Restore failed mid-way: '+e.message+' Your pre-restore data is safe — re-download it from Data & backups (safety snapshots).','danger');
+      try{ bootApp(); }catch(_){ /* keep UI consistent with surviving local state */ }
+    }finally{
+      go.disabled=false; _rsPending=null; _rsPhase='review';
+    }
+  }
+}
+
+/** Persist an updated (sealed) snapshot payload back into the ring buffer. */
+function writeSnapshotStoreBack(api,entry){
+  try{
+    const list=api.listSafetySnapshots();
+    if(list[0]===entry){
+      list[0]={...entry,payload:entry.payload};
+      const storage=globalThis.localStorage;
+      storage.setItem('cleanbid_safety_snapshots_v1',JSON.stringify(list));
+    }
+  }catch(e){ /* non-fatal: unsealed copy remains usable */ }
+}
+window.exportBackup=exportBackup;
+
+/* Restore modal wiring (file input lives in the page DOM) */
+(function(){
+  const f=document.getElementById('rsFile'); if(!f) return;
+  f.addEventListener('change',()=>{
+    const file=f.files&&f.files[0]; if(!file) return;
+    const r=new FileReader();
+    r.onload=async ()=>{
+      const api=__bkApi();
+      if(api){ _rsPending=await api.validateBackup(String(r.result)); }
+      else{ try{ _rsPending={ok:true,errors:[],warnings:[],skipped:[],parsed:JSON.parse(String(r.result))}; const p=_rsPending.parsed; _rsPending.summary=p?{orgName:p.orgName||'',exportedAt:p.exportedAt||'',counts:p.counts||null}:null; }catch(e){ _rsPending={ok:false,errors:['File is not valid JSON: '+e.message],warnings:[],skipped:[],parsed:null,summary:null}; } }
+      if(_rsPending.ok && _rsPending.summary) _rsPending.exportedAt=_rsPending.summary.exportedAt;
+      _rsShowResult(_rsPending);
+    };
+    r.onerror=()=>toast('Could not read that file.','warn');
+    r.readAsText(file);
+  });
+  const cancelBtn=document.getElementById('rsCancel');
+  if(cancelBtn) cancelBtn.addEventListener('click',()=>closeModal('restoreModal'));
+  const goBtn=document.getElementById('rsGo');
+  if(goBtn) goBtn.addEventListener('click',onRestoreConfirm);
+})();
 
 /* ====================================================================
    EXCEL / CSV IMPORT WIZARD
@@ -5151,17 +5474,19 @@ console.log('[CleanBid] ready v2');
 
 <script type="module">
   import { initAuth, signUp, signIn, signOut, getCurrentUser, getSession } from './src/auth.js';
-  import { initDb, saveState, loadState, loadDemoState, saveDemoState, setCurrentWorkspaceId, getDbMode, flushSave } from './src/db.js';
+  import { initDb, saveState, loadState, loadDemoState, saveDemoState, setCurrentWorkspaceId, getDbMode, flushSave, restoreStateToSupabase } from './src/db.js';
   import { initWorkspace, getWorkspaces, createNewWorkspace } from './src/workspace.js';
   import { bootstrap } from './src/main.js';
   import * as StateApi from './src/state.js';
+  import { buildBackup, validateBackup, applyBackup, summarizeState } from './src/backup.js';
 
   window.__cleanbid_auth = { initAuth, signUp, signIn, signOut, getCurrentUser, getSession };
-  window.__cleanbid_db = { initDb, saveState, loadState, loadDemoState, saveDemoState, setCurrentWorkspaceId, getDbMode, flushSave };
+  window.__cleanbid_db = { initDb, saveState, loadState, loadDemoState, saveDemoState, setCurrentWorkspaceId, getDbMode, flushSave, restoreStateToCloud: restoreStateToSupabase };
   window.__cleanbid_workspace = { initWorkspace, getWorkspaces, createNewWorkspace };
   window.__cleanbid_bootstrap = bootstrap;
   // Canonical workspace state-boundary helpers (used by loadStateFromDb).
   window.__cleanbid_stateapi = StateApi;
+  window.__cleanbid_backupapi = { buildBackup, validateBackup, applyBackup, summarizeState };
 
   // Trigger auth flow now that modules are registered
   if (window.__cleanbid_initAuthFlow) {
