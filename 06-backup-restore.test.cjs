@@ -61,6 +61,7 @@ const documentStub = {
   createElement: (t) => { const el = makeEl('dyn-' + t); els[el.id] = el; return el; },
 };
 const store = {};
+const storeSetItem = (k, v) => { store[k] = String(v); };
 class FileReaderStub {
   constructor() { this.result = ''; }
   readAsText(file) { this.result = file.__text || ''; const cb = this.onload; if (typeof cb === 'function') cb(); }
@@ -77,11 +78,18 @@ async function main() {
   // Real canonical modules, same objects the production bootstrap exposes.
   const stateMod = await import(pathToFileURL(path.join(__dirname, 'src', 'state.js')).href);
   const backupMod = await import(pathToFileURL(path.join(__dirname, 'src', 'backup.js')).href);
+  // The modules run OUTSIDE the vm sandbox: give their globalThis a storage
+  // so safety-snapshot ring APIs behave exactly like in the browser.
+  globalThis.localStorage = {
+    getItem: k => (k in store ? store[k] : null),
+    setItem: storeSetItem,
+    removeItem: k => delete store[k],
+  };
 
   const sandbox = {
     console: { log() {}, error() {}, warn() {} },
     document: documentStub,
-    localStorage: { getItem: k => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v); }, removeItem: k => delete store[k] },
+    localStorage: { getItem: k => (k in store ? store[k] : null), setItem: storeSetItem, removeItem: k => delete store[k] },
     Date, Math, JSON, Number, String, Array, Object, RegExp, Boolean, Promise,
     parseFloat, parseInt, isNaN, Error, Set, Map, setTimeout, clearTimeout, setInterval, clearInterval,
     confirm: () => true, prompt: () => null, alert: () => {}, scrollTo() {},
@@ -133,7 +141,7 @@ async function main() {
     freshState();
     run(`__bk = __backupMod.buildBackup(state);`);
     check('marks payload as CleanBid backup', run('__bk.cleanbid_backup') === true);
-    check('format version present', run('__bk.format') === 1);
+    check('format version present', run('__bk.format') === 2);
     check('workspaceId excluded from data', run("Object.prototype.hasOwnProperty.call(__bk.data,'workspaceId')") === false);
     check('customers deep-cloned', JSON.stringify(run('__bk.data.customers')) === '[{"id":1,"company":"Alpha Corp","contact":"A","email":"a@x.example","phone":"","address":"","notes":"","lastActivity":""}]');
     check('counts reflect live records', run('__bk.counts.quotes') === 1 && run('__bk.counts.customers') === 1 && run('__bk.counts.properties') === 1);
@@ -153,22 +161,25 @@ async function main() {
 
   console.log('\n== src/backup.js — validateBackup rejections ==');
   {
-    let v = backupMod.validateBackup('not json {{{');
+    let v = await backupMod.validateBackup('not json {{{');
     check('rejects non-JSON text', v.ok === false && v.errors.length > 0 && v.parsed === null);
-    v = backupMod.validateBackup('');
+    v = await backupMod.validateBackup('');
     check('rejects empty input', v.ok === false);
-    v = backupMod.validateBackup({ hello: 1 });
+    v = await backupMod.validateBackup({ hello: 1 });
     check('rejects foreign JSON without signature', v.ok === false && /signature|not an export/i.test(v.errors.join(' ')));
-    v = backupMod.validateBackup({ cleanbid_backup: true, format: 99, data: {} });
+    v = await backupMod.validateBackup({ cleanbid_backup: true, format: 99, data: {} });
     check('rejects unsupported format version', v.ok === false && /format/.test(v.errors.join(' ')));
-    v = backupMod.validateBackup({ cleanbid_backup: true, format: 1 });
+    v = await backupMod.validateBackup({ cleanbid_backup: true, format: 1 });
     check('rejects missing data payload', v.ok === false);
-    v = backupMod.validateBackup({ cleanbid_backup: true, format: 1, data: { quotes: 'oops' } });
+    v = await backupMod.validateBackup({ cleanbid_backup: true, format: 1, data: { quotes: 'oops' } });
     check('flags corrupted section', v.ok === false && /quotes/.test(v.errors.join(' ')));
-    v = backupMod.validateBackup({ cleanbid_backup: true, format: 1, exportedAt: '2030-01-01T00:00:00Z', data: { customers: [], properties: [], quotes: [] } });
+    v = await backupMod.validateBackup({ cleanbid_backup: true, format: 2, exportedAt: '2030-01-01T00:00:00Z', data: { customers: [], properties: [], quotes: [] } });
     check('warns on future-dated empty backup', v.ok === true && v.warnings.length >= 2);
-    v = backupMod.validateBackup({ cleanbid_backup: true, format: 1, data: { customers: [], properties: [], quotes: [] } });
+    v = await backupMod.validateBackup({ cleanbid_backup: true, format: 2, data: { customers: [], properties: [], quotes: [] } });
     check('empty backup validates but warns it will clear', v.ok === true && v.warnings.some(w => /clear/i.test(w)));
+    // Hostile record-level payloads (P1-3): skip-and-report, never crash.
+    v = await backupMod.validateBackup({ cleanbid_backup: true, format: 2, data: { customers: [{ id: 1 }, null], quotes: [{}], properties: [{ id: null }] } });
+    check('malformed entities skipped with warning', v.ok === true && v.parsed.data.customers.length === 0 && v.parsed.data.quotes.length === 0 && v.parsed.data.properties.length === 0);
   }
 
   console.log('\n== src/backup.js — applyBackup semantics ==');
@@ -208,7 +219,7 @@ async function main() {
     const fileText = JSON.stringify(exported, null, 2);
     // Wipe live data to simulate loss
     run(`state.customers=[]; state.properties=[]; state.quotes=[]; state.org={name:'Lost Everything'};`);
-    const v = backupMod.validateBackup(fileText);
+    const v = await backupMod.validateBackup(fileText);
     check('round-trip file validates', v.ok === true);
     backupMod.applyBackup(run('state'), v.parsed.data);
     check('records fully recovered', run('state.quotes.length') === 1 && run('state.customers[0].company') === 'Alpha Corp');
@@ -219,10 +230,11 @@ async function main() {
   console.log('\n== Shell: exportBackup() ==');
   {
     freshState();
-    run('exportBackup()');
+    createdBlobs.length = 0;
+    await run('exportBackup()');
     const dyn = els['dyn-a'];
     check('download anchor created + clicked', !!dyn && dyn.clicked === true && !!dyn.href);
-    check('filename follows cleanbid-backup-<slug>-<date>.json', /^cleanbid-backup-summit-office-cleaning-\d{4}-\d{2}-\d{2}\.json$/.test(dyn.download));
+    check('filename follows cleanbid-backup-<slug>-<date>_<hhmm>.json', /^cleanbid-backup-summit-office-cleaning-\d{4}-\d{2}-\d{2}_\d{4}\.json$/.test(dyn.download));
     const blob = urlMap[dyn.href];
     let blobJson = null;
     try { blobJson = JSON.parse(blob.parts[0]); } catch (e) {}
@@ -248,7 +260,7 @@ async function main() {
     run(`openRestore();`);
     check('modal opens at step 1', els['restoreModal'].classList.contains('show') === true && els['rsStep2'].style.display === 'none');
     const goodBackup = JSON.stringify({
-      cleanbid_backup: true, format: 1,
+      cleanbid_backup: true, format: 2,
       exportedAt: '2026-08-20T10:00:00.000Z',
       orgName: 'Westbrook <img src=x onerror=alert(1)> Estates',
       counts: { customers: 2, properties: 3, quotes: 4 },
@@ -257,30 +269,76 @@ async function main() {
         areaTypes: [], tasks: [],
         customers: [{ id: 1, company: 'One' }, { id: 2, company: 'Two' }],
         properties: [{ id: 1 }, { id: 2 }, { id: 3 }],
-        quotes: [{ id: 'Q-A' }, { id: 'Q-B' }, { id: 'Q-C' }, { id: 'Q-D' }],
+        quotes: [
+          { id: 'Q-A', propertyName: 'A prop', monthly: 1000 },
+          { id: 'Q-B', propertyName: 'B prop', monthly: 2000 },
+          { id: 'Q-C', propertyName: 'C prop', monthly: 3000 },
+          { id: 'Q-D', propertyName: 'D prop', monthly: 4000 },
+        ],
         addons: [], users: [], activity: [],
       },
     });
     els['rsFile'].files = [{ __text: goodBackup }];
     els['rsFile'].listeners['change']();
+    await new Promise(r => setTimeout(r, 60)); // async FileReader + validateBackup
     check('summary step shown', els['rsStep2'].style.display !== 'none');
     check('counts previewed from file', /<b>2<\/b> customers/.test(els['rsSummary'].innerHTML) && /<b>4<\/b> quotes/.test(els['rsSummary'].innerHTML));
-    check('confirm button revealed', els['rsGo'].classList.contains('hidden') === false);
+    check('confirm button revealed in review phase', els['rsGo'].classList.contains('hidden') === false);
+    check('button reads Prepare restore (phase 1)', /Prepare restore/i.test(els['rsGo'].textContent));
     check('hostile org name rendered inert', els['rsSummary'].innerHTML.includes('&lt;img') === true && els['rsSummary'].innerHTML.includes('<img') === false);
   }
 
-  console.log('\n== Shell: restore commit ==');
+  console.log('\n== Shell: P0-2 two-phase confirm — safety snapshot BEFORE restore ==');
   {
     const beforeWorkspace = run('state.workspaceId');
-    els['rsGo'].listeners['click']();
-    await new Promise(r => setTimeout(r, 30)); // let async commitRestore settle
+    const snapshotsBefore = backupMod.listSafetySnapshots().length;
+    createdBlobs.length = 0;
+    els['rsGo'].listeners['click']();          // phase 1: prepare
+    await new Promise(r => setTimeout(r, 30));
+    check('safety snapshot created', backupMod.listSafetySnapshots().length === snapshotsBefore + 1);
+    const snap = backupMod.listSafetySnapshots()[0];
+    check('snapshot holds COMPLETE state (activity included)', snap.payload.data.activity.length >= 1 && snap.payload.data.quotes.length >= 1);
+    check('safety file auto-downloaded', createdBlobs.some(b => String(b.parts[0]).includes('"cleanbid_backup"')));
+    check('restore NOT executed yet (old data intact)', run('state.customers.length') === 1 && run('state.customers[0].company') === 'Alpha Corp');
+    check('armed banner shows exact snapshot label', /Safety backup created: CleanBid — /.test(els['rsSummary'].innerHTML));
+    check('armed banner warns replace is irreversible', /cannot be undone/i.test(els['rsSummary'].innerHTML));
+    check('modal still open awaiting final confirmation', els['restoreModal'].classList.contains('show') === true);
+
+    els['rsGo'].listeners['click']();          // phase 2: execute
+    await new Promise(r => setTimeout(r, 30));
+    if (process.env.BK_DEBUG) console.log('DBG quotes:', JSON.stringify(run('state.quotes.map(q=>q.id)')), 'len:', run('state.quotes.length'));
     check('customers replaced from file', run('state.customers.length') === 2 && run('state.customers[0].company') === 'One');
     check('quotes replaced from file', run('state.quotes.length') === 4 && run('state.quotes[0].id') === 'Q-A');
     check('pricing replaced from file', run('state.pricing.wage') === 21);
+    check('_quoteSeq reset so IDs reseed from restored set', run('state._quoteSeq') === undefined);
+    const restoredMax = run(`Math.max.apply(null, state.quotes.map(q=>{const m=/^Q-(\\d+)$/.exec(q.id||'');return m?parseInt(m[1],10):0;}).concat([1100]))`);
+    run(`const nid = nextQuoteId(); window.__newQid = nid;`);
+    check('next quote ID unique vs restored records', !run('state.quotes.some(q=>q.id===window.__newQid)'));
+    check('next quote ID continues above restored max', parseInt(String(run('window.__newQid')).slice(2), 10) > restoredMax - 1 || /^Q-11\d\d$/.test(String(run('window.__newQid'))));
     check('active workspace preserved', run('state.workspaceId') === beforeWorkspace);
     check('activity logged', run(`state.activity.some(a=>/restored workspace/.test(a.what))`) === true);
     check('modal closed after success', els['restoreModal'].classList.contains('show') === false);
     check('success toast shown', getToasts().some(t => t.t === 'success' && /restored/i.test(t.m)));
+    check('safety snapshot survives completed restore', backupMod.listSafetySnapshots().length === snapshotsBefore + 1);
+  }
+
+  console.log('\n== Shell: P0-2 snapshot failure BLOCKS restore entirely ==');
+  {
+    freshState();
+    const beforeAll = run(`JSON.stringify({c:state.customers,q:state.quotes})`);
+    // Force quota failure in the REAL module's storage (globalThis outside the vm).
+    const origSet = globalThis.localStorage.setItem;
+    globalThis.localStorage.setItem = function (k, v) { if (String(k).startsWith('cleanbid_safety_snapshots')) throw new Error('QuotaExceededError'); return origSet.call(globalThis.localStorage, k, v); };
+    run(`openRestore();`);
+    els['rsFile'].files = [{ __text: JSON.stringify({ cleanbid_backup: true, format: 2, exportedAt: '2026-08-20T10:00:00Z', counts: { customers: 1 }, data: { org: { name: 'X' }, pricing: {}, profiles: [], areaTypes: [], tasks: [], customers: [{ id: 9, company: 'New' }], properties: [], quotes: [{ id: 'Q-N', propertyName: 'N', monthly: 1 }], addons: [], users: [], activity: [] } }) }];
+    els['rsFile'].listeners['change']();
+    await new Promise(r => setTimeout(r, 40));
+    els['rsGo'].listeners['click']();          // prepare -> snapshot fails here
+    await new Promise(r => setTimeout(r, 30));
+    check('abort toast shown', getToasts().some(t => t.t === 'danger' && /Safety snapshot FAILED/i.test(t.m)));
+    check('restore did NOT run (state untouched)', run(`JSON.stringify({c:state.customers,q:state.quotes})`) === beforeAll);
+    check('flow stays in review phase (not armed)', /Prepare restore/i.test(els['rsGo'].textContent));
+    globalThis.localStorage.setItem = origSet; // restore original
   }
 
   console.log('\n== Shell: invalid file rejected with NO side effects ==');
@@ -290,6 +348,7 @@ async function main() {
     const snapBefore = run(`JSON.stringify({c:state.customers,q:state.quotes,o:state.org})`);
     els['rsFile'].files = [{ __text: '{"this":"is some random json"}' }];
     els['rsFile'].listeners['change']();
+    await new Promise(r => setTimeout(r, 30));
     check('errors listed in modal', /✕/.test(els['rsErrors'].innerHTML));
     check('confirm button stays hidden', els['rsGo'].classList.contains('hidden') === true);
     check('recovery hint shown', /No changes were made/i.test(els['rsSummary'].innerHTML));
@@ -299,7 +358,71 @@ async function main() {
     // garbage bytes
     els['rsFile'].files = [{ __text: '\x00\x01not-json' }];
     els['rsFile'].listeners['change']();
+    await new Promise(r => setTimeout(r, 30));
     check('non-JSON rejected', /valid JSON/i.test(els['rsErrors'].innerHTML));
+  }
+
+  console.log('\n== Shell: P1-4 demo mode refuses real-data restores ==');
+  {
+    freshState();
+    const demoBeforeAll = run(`JSON.stringify({c:state.customers,q:state.quotes})`);
+    const snapsBeforeDemo = backupMod.listSafetySnapshots().length;
+    run(`window.__cleanbid_is_demo = true;`);   // simulate being inside the demo
+    run(`openRestore();`);
+    check('demo warning visible before any file is chosen', /Demo mode/.test(els['rsSummary'].innerHTML));
+    els['rsFile'].files = [{ __text: JSON.stringify({ cleanbid_backup: true, format: 2, exportedAt: '2026-08-20T10:00:00Z', orgName: 'REAL CUSTOMERS INC', data: { org: { name: 'REAL' }, pricing: {}, profiles: [], areaTypes: [], tasks: [], customers: [{ id: 50, company: 'Real Customer' }], properties: [], quotes: [{ id: 'Q-REAL', propertyName: 'R', monthly: 9 }], addons: [], users: [], activity: [] } }) }];
+    els['rsFile'].listeners['change']();
+    await new Promise(r => setTimeout(r, 40));
+    els['rsGo'].listeners['click']();
+    await new Promise(r => setTimeout(r, 30));
+    check('restore blocked with warning toast', getToasts().some(t => t.t === 'warn' && /Demo mode/i.test(t.m)));
+    check('real data never entered demo state', run(`JSON.stringify({c:state.customers,q:state.quotes})`) === demoBeforeAll);
+    check('no safety snapshot consumed/created in demo', backupMod.listSafetySnapshots().length === snapsBeforeDemo);
+    run(`window.__cleanbid_is_demo = false;`);
+  }
+
+  console.log('\n== Hostile: P2-2 summary failure must NOT render as zeros ==');
+  {
+    freshState();
+    // Swap the sandbox's backup API (what the shell actually reads) for one
+    // whose summarizeState throws — simulating an internal summary failure.
+    const origApiRef = run('window.__cleanbid_backupapi');
+    run(`window.__cleanbid_backupapi = Object.assign({}, window.__cleanbid_backupapi, { summarizeState: () => { throw new Error('boom'); } });`);
+    run('renderDataBackups();');
+    check('counts show em-dash, never 0', els['bkCountCust'].textContent === '—' && els['bkCountQuote'].textContent === '—');
+    check('explicit error line shown', /unable to calculate workspace summary/i.test(els['bkLastExport'].textContent));
+    check('zero never displayed as record count', els['bkCountCust'].textContent !== '0');
+    // Restore the original API reference.
+    sandbox.window.__cleanbid_backupapi = origApiRef;
+    run('renderDataBackups();');
+    check('recovers to normal display afterwards', els['bkCountCust'].textContent === '1');
+  }
+
+  console.log('\n== Hostile: cloud restore failure leaves safety snapshot available ==');
+  {
+    freshState();
+    const snapsBeforeFail = backupMod.listSafetySnapshots().length;
+    const stateBeforeCloud = run(`JSON.stringify({c:state.customers})`);
+    // Simulate cloud mode whose RPC dies AFTER applyBackup mutated memory.
+    const prevDb = vm.runInContext('window.__cleanbid_db', sandbox);
+    run(`window.__cleanbid_db = Object.assign({}, window.__cleanbid_db, {
+      getDbMode: () => 'supabase',
+      restoreStateToCloud: async () => { throw new Error('RPC failed: remote row changed'); },
+    });`);
+    run(`openRestore();`);
+    els['rsFile'].files = [{ __text: JSON.stringify({ cleanbid_backup: true, format: 2, exportedAt: '2026-08-20T10:00:00Z', counts: { customers: 1 }, data: { org: { name: 'C' }, pricing: {}, profiles: [], areaTypes: [], tasks: [], customers: [{ id: 3, company: 'Cloud Cust' }], properties: [], quotes: [{ id: 'Q-CLOUD', propertyName: 'CL', monthly: 5 }], addons: [], users: [], activity: [] } }) }];
+    els['rsFile'].listeners['change']();
+    await new Promise(r => setTimeout(r, 40));
+    createdBlobs.length = 0;
+    els['rsGo'].listeners['click']();          // prepare: snapshot succeeds
+    await new Promise(r => setTimeout(r, 30));
+    els['rsGo'].listeners['click']();          // execute: cloud RPC throws
+    await new Promise(r => setTimeout(r, 30));
+    check('failure toast names the snapshot as the recovery path', getToasts().some(t => t.t === 'danger' && /safety/i.test(t.m)));
+    check('safety snapshot from BEFORE this restore still exists', backupMod.listSafetySnapshots().length === snapsBeforeFail + 1);
+    const snap = backupMod.listSafetySnapshots()[0];
+    check('that snapshot holds the pre-restore data', JSON.stringify(snap.payload.data.customers.map(c=>c.company)).includes('Alpha Corp'));
+    check('snapshot independently downloadable', createdBlobs.some(b => String(b.parts[0]).includes('"cleanbid_backup"')));
   }
 
   console.log('\n== Shell: reopen resets previous attempt ==');

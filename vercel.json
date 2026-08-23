@@ -1,0 +1,7 @@
+{
+  "framework": "vite",
+  "build": {
+    "command": "vite build",
+    "output": "dist"
+  }
+}
