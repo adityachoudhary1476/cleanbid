@@ -281,6 +281,12 @@ tbody tr:hover{background:var(--paper-3)}
    ==================================================================== */
 .qb{display:grid;grid-template-columns:1fr 1fr 1.1fr;gap:14px;align-items:start;height:100vh;}
 .qb-col{display:flex;flex-direction:column;gap:14px}
+
+/* RIGHT RAIL (billing summary) — the whole column is the sticky unit so the
+   calc card can never translate over its own siblings (calc-econ/health/gbb).
+   The rail scrolls internally when taller than the viewport, so nothing is
+   unreachable and no page content is ever covered. */
+.qb-billing{position:sticky;top:90px;max-height:calc(100vh - 110px);overflow-y:auto;padding-right:2px}
 .sb h4{font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--text-muted);font-weight:700;margin-bottom:9px;display:flex;justify-content:space-between;align-items:center}
 .sb h4 .add{color:var(--accent);font-size:11px;text-transform:none;letter-spacing:0;font-weight:700;padding:3px 9px;border-radius:4px}
 .sb h4 .add:hover{background:var(--accent-soft)}
@@ -330,7 +336,7 @@ tbody tr:hover{background:var(--paper-3)}
 /* ====================================================================
    CALC CARD + WHY + ECONOMICS + GOOD/BETTER/BEST
    ==================================================================== */
-.calc{background:var(--ink);color:#fff;border-radius:12px;padding:22px;position:sticky;top:90px;overflow:hidden;box-shadow:var(--shadow-2)}
+.calc{background:var(--ink);color:#fff;border-radius:12px;padding:22px;overflow:hidden;box-shadow:var(--shadow-2)}
 .calc::after{content:"";position:absolute;top:-30px;right:-30px;width:120px;height:120px;background:var(--accent);opacity:.14;border-radius:50%}
 .calc .ct{font-family:'Fraunces',serif;font-style:italic;font-weight:500;font-size:13px;color:rgba(255,255,255,.6);margin-bottom:14px;position:relative}
 .calc .row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.08);font-size:13px;position:relative;gap:8px}
@@ -585,7 +591,8 @@ tbody tr:hover{background:var(--paper-3)}
 /* tablet / laptop split */
 @media (max-width:1100px){
   .qb{grid-template-columns:1fr}
-  .calc{position:sticky;top:90px}
+  /* single column: the rail flows in-page (mobile price bar covers live total) */
+  .qb-billing{position:static;max-height:none;overflow:visible}
   .stats{grid-template-columns:repeat(2,1fr)}
   .roi-grid{grid-template-columns:1fr;gap:14px}
   .roi-arrow{display:none}
@@ -1313,7 +1320,7 @@ tbody tr:hover{background:var(--paper-3)}
         </div>
 
         <!-- RIGHT: Calculation stack (price + why + economics + g/b/b + health) -->
-        <div class="qb-col">
+        <div class="qb-col qb-billing">
           <!-- the calculator card (dark) -->
           <div class="calc" id="calcPanel">
             <div class="ct">The numbers.</div>
@@ -2581,15 +2588,19 @@ function activePricing(){
    explicitly changed. Never mutates state.pricing / profiles (globals).
    ==================================================================== */
 
-// Fields the Why-drawer may edit. label = UI name; kind drives validation;
-// get/set map between the drawer field and activePricing()/engine input.
+// Fields the Why-drawer may edit — EVERYTHING the engine consumes that is
+// editable per-quote. crewHoursOverride/wage/burden/supplies/overhead/margin/
+// minPrice are stored in q.whyOverrides; frequency/package route to the
+// builder's canonical controls (#qbFreq select / qb.package) so each value
+// still has exactly ONE source of truth.
 const WHY_EDITABLE_FIELDS = [
-  { key:'crewHoursOverride', label:'Hours per visit', kind:'hours', step:'0.25', min:0.25 },
-  { key:'wage',              label:'Labor rate',      kind:'money', step:'0.5',  min:0 },
-  { key:'burden',            label:'Payroll burden',  kind:'pct',   step:'0.5',  min:0, max:100 },
-  { key:'supplies',          label:'Supplies',        kind:'pct',   step:'0.5',  min:0, max:100 },
-  { key:'overhead',          label:'Overhead',        kind:'pct',   step:'0.5',  min:0, max:100 },
-  { key:'margin',            label:'Target margin',   kind:'margin',step:'0.5',  min:0, max:99.9 },
+  { key:'crewHoursOverride', label:'Hours per visit', kind:'hours',  step:'0.25', min:0.25, unit:'hrs' },
+  { key:'wage',              label:'Labor rate',      kind:'money',  step:'0.5',  min:0,    unit:'cur' },
+  { key:'burden',            label:'Payroll burden',  kind:'pct',    step:'0.5',  min:0, max:100 },
+  { key:'supplies',          label:'Supplies',        kind:'pct',    step:'0.5',  min:0, max:100 },
+  { key:'overhead',          label:'Overhead',        kind:'pct',    step:'0.5',  min:0, max:100 },
+  { key:'margin',            label:'Target margin',   kind:'margin', step:'0.5',  min:0, max:99.9 },
+  { key:'minPrice',          label:'Minimum price',   kind:'money',  step:'50',   min:0 },
 ];
 
 function whyDefaults(){
@@ -2661,6 +2672,7 @@ function buildEngineInput(overrides){
   if(ov.supplies !== undefined) base.profile.supplies = ov.supplies;
   if(ov.overhead !== undefined) base.profile.overhead = ov.overhead;
   if(ov.margin !== undefined)   base.profile.margin = ov.margin;
+  if(ov.minPrice !== undefined) base.profile.minPrice = ov.minPrice;
   if(ov.crewHoursOverride !== undefined && ov.crewHoursOverride !== null){
     base.crewHoursOverride = ov.crewHoursOverride; // replaces survey-derived hours
   }
@@ -4437,6 +4449,25 @@ function openWhy(){
         </span>
       </div>`;
     }).join('')}
+    <div class="why-edit-row">
+      <label class="wr-l" for="whyEdit_freq">Visits per week</label>
+      <span class="why-edit-ctl">
+        <input id="whyEdit_freq" type="number" step="0.5" min="0.5" value="${parseFloat(document.getElementById('qbFreq').value)||1}"
+               inputmode="decimal" oninput="commitWhyFreq(this.value)">
+        <span class="why-unit">×/wk</span>
+      </span>
+    </div>
+    <div class="why-edit-row">
+      <label class="wr-l">Package tier</label>
+      <span class="why-edit-ctl">
+        <select id="whyEdit_pkg" style="width:auto;padding:5px 8px;border:1px solid var(--line);border-radius:6px;background:var(--paper-2);font-size:12.5px;color:var(--ink)"
+                onchange="pickPkg(this.value);markDirty();recalc();openWhy()">
+          <option value="essential" ${qb.package==='essential'?'selected':''}>Essential (−4% margin, ×0.92)</option>
+          <option value="professional" ${qb.package==='professional'?'selected':''}>Professional</option>
+          <option value="premium" ${qb.package==='premium'?'selected':''}>Premium (+6% margin, ×1.10)</option>
+        </select>
+      </span>
+    </div>
     <div class="why-row"><div class="wr-l">Cleaners per visit</div><div class="wr-v">${c.cleaners}</div></div>
     <div class="why-row calc-row"><div class="wr-l">Labor cost / visit</div><div class="wr-v">${fmtCurrency(c.laborPerVisit)}</div></div>
     <div class="why-row"><div class="wr-l">+ Payroll burden</div><div class="wr-v">${fmtCurrency(c.burdenPerVisit)}</div></div>
@@ -4468,8 +4499,8 @@ function commitWhyEdit(key, rawValue){
   if(v < f.min){ toast(f.label+': must be at least '+f.min+'.','warn'); return; }
   if(f.max !== undefined && v > f.max){ toast(f.label+': must be at most '+f.max+(f.kind==='margin'?'%':'.'),'warn'); return; }
 
-  // Target the quote being built/edited; for a brand-new unsaved quote,
-  // attach overrides to a lightweight pending object keyed by null.
+  // minPrice lives on workspace pricing, not the profile — buildEngineInput
+  // reads it from state.pricing via activePricing(); override it per-quote here.
   let q = _builderQuoteId ? state.quotes.find(x=>x.id===_builderQuoteId) : null;
   if(!q){
     if(!window.__pendingWhyOverrides) window.__pendingWhyOverrides = {};
@@ -4481,6 +4512,16 @@ function commitWhyEdit(key, rawValue){
   markDirty();
   recalc();       // single canonical path: buildEngineInput → calculatePricing
   openWhy();      // re-render drawer with new results + updated "edited" tags
+}
+
+// Visit frequency edits route to the builder's own #qbFreq control (single source).
+function commitWhyFreq(rawValue){
+  const v = parseFloat(rawValue);
+  if(!Number.isFinite(v) || v <= 0){ toast('Visits per week: enter a positive number.','warn'); return; }
+  document.getElementById('qbFreq').value = String(v);
+  markDirty();
+  recalc();
+  openWhy();
 }
 
 // Reset one field back to the workspace/profile default.
