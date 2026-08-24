@@ -913,8 +913,9 @@ tbody tr:hover{background:var(--paper-3)}
     <div style="width:100%">
       <div class="hero-bar">
         <div class="brand">
-                    <img src="/logo.png" alt="CleanBid logo" style="height:64px;width:auto;border-radius:10px;display:block;background:var(--paper);padding:4px">
-                  </div>
+          <svg width="44" height="44" viewBox="0 0 32 32" aria-label="CleanBid logo" style="display:block;flex-shrink:0;filter:drop-shadow(0 2px 6px rgba(0,0,0,.2))"><rect width="32" height="32" rx="8" fill="#c46a3a"/><path d="M21.5 11.2c-.9-1.3-2.4-2-4.1-2-3 0-5.3 2.6-5.3 6.8s2.3 6.8 5.3 6.8c1.7 0 3.2-.7 4.1-2l1.9 1.4c-1.3 1.8-3.5 2.9-6 2.9-4.5 0-7.9-3.7-7.9-9.1S13 7 17.5 7c2.5 0 4.7 1.1 6 2.9l-2 1.3z" fill="#fff"/></svg>
+          <div class="word">CleanBid</div>
+        </div>
         <div class="navlinks">
           <a onclick="document.getElementById('roi-sec').scrollIntoView({behavior:'smooth'})">How it works</a>
           <a href="#" onclick="showAuthForms(); return false;">Sign In</a>
@@ -937,6 +938,7 @@ tbody tr:hover{background:var(--paper-3)}
           <h2>Get started.</h2>
           <p class="h-sub">Sign in to your workspace or explore the interactive demo.</p>
           <button class="btn btn-ink btn-lg" onclick="showAuthForms()" style="width:100%;justify-content:center">Sign In</button>
+          <p style="text-align:center;margin-top:10px;font-size:12.5px;color:rgba(255,255,255,.75)">Already have an account? <a href="#" onclick="showAuthForms(); return false;" style="color:#fff;font-weight:700;text-decoration:underline;text-underline-offset:2px">Sign in here</a></p>
           <button class="btn btn-ghost-pill" onclick="enterDemo()" style="width:100%;justify-content:center;margin-top:10px;border:1px solid rgba(255,255,255,.5);color:#fff">Try Interactive Demo</button>
           <p class="demo-hint">Demo is loaded with sample data. No account required.</p>
         </div>
