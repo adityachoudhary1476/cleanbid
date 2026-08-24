@@ -1,0 +1,397 @@
+<!-- ============================================================
+     LANDING v2 — public marketing homepage (inside #view-login)
+     Honest-by-design: no customers, testimonials, counts or claims
+     that the product cannot verify. Sample numbers below are produced
+     by 01-pricing-engine.cjs (see scripts/landing-v2.css header note).
+============================================================ -->
+<div class="lnav">
+  <div class="lwrap lnav-in">
+    <div class="brand" aria-label="CleanBid home">
+      <svg width="34" height="34" viewBox="0 0 32 32" aria-hidden="true" style="display:block;flex-shrink:0"><rect width="32" height="32" rx="8" fill="#c46a3a"/><path d="M21.5 11.2c-.9-1.3-2.4-2-4.1-2-3 0-5.3 2.6-5.3 6.8s2.3 6.8 5.3 6.8c1.7 0 3.2-.7 4.1-2l1.9 1.4c-1.3 1.8-3.5 2.9-6 2.9-4.5 0-7.9-3.7-7.9-9.1S13 7 17.5 7c2.5 0 4.7 1.1 6 2.9l-2 1.3z" fill="#fff"/></svg>
+      <div class="word">CleanBid</div>
+    </div>
+    <nav class="lnav-links" aria-label="Primary">
+      <a href="#how">How it works</a>
+      <a href="#sample">Sample estimate</a>
+      <a href="#who">Who it's for</a>
+      <a href="#pricing">Pricing</a>
+      <a href="#faq">FAQ</a>
+      <a class="nav-signin" href="#" onclick="showAuthForms(); return false;">Sign In</a>
+      <a class="nav-cta" href="#" onclick="enterDemo(); return false;">Try Demo</a>
+    </nav>
+    <button class="burger" id="navBurger" aria-label="Open menu" aria-expanded="false" onclick="toggleLandingNav()">☰</button>
+  </div>
+  <div class="lnav-mobile" id="navMobile">
+    <a href="#how" onclick="closeLandingNav()">How it works</a>
+    <a href="#sample" onclick="closeLandingNav()">Sample estimate</a>
+    <a href="#who" onclick="closeLandingNav()">Who it's for</a>
+    <a href="#pricing" onclick="closeLandingNav()">Pricing</a>
+    <a href="#faq" onclick="closeLandingNav()">FAQ</a>
+    <a href="#" onclick="showAuthForms(); closeLandingNav(); return false;">Sign In</a>
+    <a href="#" onclick="enterDemo(); closeLandingNav(); return false;" style="color:var(--accent);font-weight:800">Try Demo →</a>
+  </div>
+</div>
+
+<header class="lhero" id="top">
+  <div class="lwrap lhero-grid">
+    <div>
+      <h1>Quote the building.<br><span class="it">Then win it.</span></h1>
+      <p class="lhero-sub">Commercial cleaning estimating software that turns a site survey into calculated labor, defensible pricing, and a client-ready proposal.</p>
+      <div class="cta-row">
+        <button class="btn-hero" onclick="enterDemo()">Try the Interactive Demo →</button>
+        <a class="btn-hero-o" href="#how">See How It Works</a>
+      </div>
+      <p class="lhero-trust">Built for commercial cleaning companies that need faster estimates, consistent pricing, and professional proposals.</p>
+    </div>
+    <div class="mock-wrap">
+      <div class="mock" role="img" aria-label="Preview of the CleanBid quote builder: site survey on the left, live price calculation on the right">
+        <div class="mock-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="url">app.getcleanbid.app — New Quote</span></div>
+        <div class="mock-body">
+          <aside class="mock-side" aria-hidden="true">
+            <div class="ms-brand"><span class="m">S</span><span class="w">Summit</span></div>
+            <div class="ms-lab">Workspace</div>
+            <div class="ms-item">▦ Dashboard</div>
+            <div class="ms-item on">+ New Quote</div>
+            <div class="ms-lab">Pipeline</div>
+            <div class="ms-item">≈ Quotes · 5</div>
+            <div class="ms-item">◔ Customers · 4</div>
+            <div class="ms-item">▢ Properties</div>
+            <div class="ms-lab">Configure</div>
+            <div class="ms-item">⚙ Pricing Rules</div>
+          </aside>
+          <div class="mock-main">
+            <div class="mock-crumb"><b>Workspace</b> / Quote Builder</div>
+            <div class="mock-h"><span class="t">Site survey & pricing</span><span class="s">Labor math runs as you type</span></div>
+            <div class="mock-cols">
+              <div class="mock-card">
+                <div class="mc-t">Property — Westbrook Business Center</div>
+                <div class="mock-row"><span class="k">Building size</span><span class="v">75,000 sq ft</span></div>
+                <div class="mock-row"><span class="k">Cleaning frequency</span><span class="v">5× per week</span></div>
+                <div class="mock-chiprow"><span class="mock-chip">Open office · 28k sq ft</span><span class="mock-chip">Restrooms · 2.4k</span><span class="mock-chip">Lobby · 3.2k</span><span class="mock-chip">Hallways · 12k</span></div>
+              </div>
+              <div class="mock-card mock-pricecard">
+                <div class="mc-t">Recommended monthly</div>
+                <div class="mock-price">$19,040<span class="pmo">/mo</span></div>
+                <div class="mock-plabel">25% target margin included</div>
+                <div class="mock-minirows">
+                  <div class="mock-mr"><span>Labor hours / visit</span><b>26.8 hrs</b></div>
+                  <div class="mock-mr"><span>Cleaners / visit</span><b>11</b></div>
+                  <div class="mock-mr"><span>Visits / month</span><b>21.65</b></div>
+                  <div class="mock-mr"><span>Cost / visit</span><b>$659.57</b></div>
+                </div>
+                <div class="mock-health">● Quote Health: Ready</div>
+                <div class="mock-btnrow"><span class="mb1">Generate Proposal</span><span class="mb2">Why this price?</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p style="margin-top:14px;font-size:11.5px;color:rgba(255,255,255,.55);text-align:center">Live product preview — every figure above updates as you survey the building.</p>
+    </div>
+  </div>
+</header>
+
+<!-- HOW IT WORKS -->
+<section class="lsec tint" id="how">
+  <div class="lwrap">
+    <div class="lsec-head center">
+      <span class="eyebrow-d">How CleanBid works</span>
+      <h2 class="h2">From walk-through to signed proposal, in one workflow.</h2>
+      <p class="lead">CleanBid follows the estimating process commercial cleaning teams already use — with the math handled and the assumptions made explicit at each step.</p>
+    </div>
+    <div class="flow">
+      <div class="flow-step">
+        <div class="flow-num">01</div>
+        <div class="flow-name">Site survey</div>
+        <div class="flow-desc">Capture areas, square footage, floor types, and cleaning frequency during the walk-through — not afterward from memory.</div>
+        <span class="flow-arrow" aria-hidden="true">→</span>
+      </div>
+      <div class="flow-step">
+        <div class="flow-num">02</div>
+        <div class="flow-name">Labor calculation</div>
+        <div class="flow-desc">Productivity rates per area type turn your survey into crew-hours, cleaners needed, and visits per month automatically.</div>
+        <span class="flow-arrow" aria-hidden="true">→</span>
+      </div>
+      <div class="flow-step">
+        <div class="flow-num">03</div>
+        <div class="flow-name">Pricing</div>
+        <div class="flow-desc">Wage, burden, supplies, overhead, and target margin are applied consistently — the same way, for every estimator.</div>
+        <span class="flow-arrow" aria-hidden="true">→</span>
+      </div>
+      <div class="flow-step">
+        <div class="flow-num">04</div>
+        <div class="flow-name">Proposal</div>
+        <div class="flow-desc">Generate a branded, client-ready proposal from the estimate — priced with the exact numbers you just surveyed.</div>
+        <span class="flow-arrow" aria-hidden="true">→</span>
+      </div>
+      <div class="flow-step">
+        <div class="flow-num">05</div>
+        <div class="flow-name">Rebid</div>
+        <div class="flow-desc">When contracts renew, reuse the saved property and adjust scope — no rebuilding the estimate from scratch.</div>
+        <span class="flow-arrow" aria-hidden="true">→</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- SAMPLE ESTIMATE -->
+<section class="lsec" id="sample">
+  <div class="lwrap">
+    <div class="lsec-head">
+      <span class="sample-tag">◆ Sample data — illustrative demo estimate</span>
+      <h2 class="h2">From site survey to quote.</h2>
+      <p class="lead">This is a worked example generated by CleanBid's pricing engine using its default assumptions (Standard Commercial profile). Your own rates, productivity figures, and margins produce your own numbers.</p>
+    </div>
+    <div class="sample-grid">
+      <div class="est-card">
+        <div class="ec-title">Estimate summary — Westbrook Business Center</div>
+        <div class="ec-rows">
+          <div class="ec-row"><span class="k">Building size</span><span class="v">75,000 sq ft</span></div>
+          <div class="ec-row"><span class="k">Cleaning frequency</span><span class="v">5× / week</span></div>
+          <div class="ec-row"><span class="k">Estimated labor</span><span class="v">26.8 crew-hrs / visit</span></div>
+          <div class="ec-row"><span class="k">Crew size</span><span class="v">11 cleaners</span></div>
+          <div class="ec-row"><span class="k">Direct monthly cost</span><span class="v">$14,280</span></div>
+          <div class="ec-row"><span class="k">Target margin</span><span class="v">25%</span></div>
+          <div class="ec-row total"><span class="k">Recommended monthly price</span><span class="v">$19,040</span></div>
+          <div class="ec-row total"><span class="k">Annual contract value</span><span class="v">$228,476</span></div>
+        </div>
+        <p class="ec-note">Assumptions: $18/hr base wage · 15% payroll burden · 8% supplies · 12% overhead · Standard Commercial profile · Professional package. All figures computed by the same engine that powers the app — change any assumption in the demo and watch the price recompute.</p>
+      </div>
+      <div class="est-side">
+        <div class="prop-card" aria-label="Example proposal document preview">
+          <div class="pc-kind">Client-ready output</div>
+          <div class="pc-brand"><span class="m">S</span><span class="co">Summit Facility Services</span></div>
+          <h4>Janitorial Services Proposal</h4>
+          <p class="pc-sub">Prepared for Westbrook Real Estate · Westbrook Business Center</p>
+          <div class="pc-line"><span>Scope of service</span><b>General office cleaning</b></div>
+          <div class="pc-line"><span>Service frequency</span><b>5 nights / week</b></div>
+          <div class="pc-line"><span>Contract term</span><b>12 months</b></div>
+          <div class="pc-price"><span class="pl">Monthly investment</span><span class="pv tabnum">$19,040</span></div>
+        </div>
+        <p class="demo-cta-note">The interactive demo walks through this exact flow with sample data —<br><a href="#" onclick="enterDemo(); return false;" style="color:var(--accent);font-weight:700">generate the proposal yourself →</a></p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- BEFORE / AFTER -->
+<section class="lsec tint" id="why">
+  <div class="lwrap">
+    <div class="lsec-head center">
+      <span class="eyebrow-d">Why CleanBid</span>
+      <h2 class="h2">Spreadsheets can work. Until they can't keep up.</h2>
+      <p class="lead">There's nothing wrong with starting in Excel. The trouble starts when every estimator keeps their own workbook — and nobody can reconstruct how a number was produced.</p>
+    </div>
+    <div class="ba-grid">
+      <div class="ba-col">
+        <div class="ba-label">Before</div>
+        <h4>Spreadsheet-by-spreadsheet estimating</h4>
+        <ul class="ba-list">
+          <li>A different workbook for each estimator</li>
+          <li>Labor math rebuilt by hand for every bid</li>
+          <li>Pricing assumptions that live in someone's head</li>
+          <li>Proposals assembled from Word templates</li>
+          <li>Rebids mean finding and updating old files</li>
+          <li>Margin only visible after the fact — if ever</li>
+        </ul>
+      </div>
+      <div class="ba-mid" aria-hidden="true">→</div>
+      <div class="ba-col alt">
+        <div class="ba-label">With CleanBid</div>
+        <h4>One structured estimating workflow</h4>
+        <ul class="ba-list">
+          <li>Every estimate built from a saved site survey</li>
+          <li>Labor calculated from editable productivity rates</li>
+          <li>Pricing profiles standardize wage, burden & margin</li>
+          <li>Branded proposals generated from the quote</li>
+          <li>Rebids reuse property data and quote history</li>
+          <li>Margin visible before the proposal is sent</li>
+        </ul>
+      </div>
+    </div>
+    <p class="ba-footnote">If your current spreadsheet process is documented, consistent, and easy to hand off — it may be all you need. CleanBid exists for the point where it isn't.</p>
+  </div>
+</section>
+
+<!-- OUTCOMES -->
+<section class="lsec" id="outcomes">
+  <div class="lwrap">
+    <div class="lsec-head center">
+      <span class="eyebrow-d">Business outcomes</span>
+      <h2 class="h2">What changes when quoting runs on one system.</h2>
+    </div>
+    <div class="out-grid">
+      <div class="out-card"><div class="out-num">01</div><div class="out-name">Quote faster</div><div class="out-desc">Turn site-survey notes into a structured estimate without rebuilding spreadsheets or retyping numbers.</div></div>
+      <div class="out-card"><div class="out-num">02</div><div class="out-name">Protect your margin</div><div class="out-desc">See labor, cost, target margin, and selling price together — before the proposal leaves your office.</div></div>
+      <div class="out-card"><div class="out-num">03</div><div class="out-name">Standardize pricing</div><div class="out-desc">Stop every estimator from using their own spreadsheet and assumptions. One methodology, applied every time.</div></div>
+      <div class="out-card"><div class="out-num">04</div><div class="out-name">Send professional proposals</div><div class="out-desc">Convert the estimate into a client-ready branded proposal without touching a word processor.</div></div>
+      <div class="out-card"><div class="out-num">05</div><div class="out-name">Rebid without starting over</div><div class="out-desc">Reuse property information and version history when contracts come back up for renewal.</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- WHO IT'S FOR -->
+<section class="lsec tint" id="who">
+  <div class="lwrap">
+    <div class="lsec-head center">
+      <span class="eyebrow-d">Who it's for</span>
+      <h2 class="h2">Built for commercial cleaning teams.</h2>
+      <p class="lead">CleanBid is designed around how commercial cleaning companies actually sell work — recurring contracts, competitive bids, and thin margins.</p>
+    </div>
+    <div class="for-grid">
+      <div class="for-card">
+        <span class="for-fit">Best fit</span>
+        <h4>Growing cleaning companies</h4>
+        <p>You've moved beyond informal quoting but spreadsheets are buckling — too many bids, too many versions, no single source of truth for pricing.</p>
+      </div>
+      <div class="for-card">
+        <span class="for-fit">Best fit</span>
+        <h4>Estimating & sales teams</h4>
+        <p>Multiple people prepare quotes and they need to come out consistent — same labor logic, same margin targets, faster turnaround on every RFP.</p>
+      </div>
+      <div class="for-card">
+        <span class="for-fit">Best fit</span>
+        <h4>Operations preparing to scale</h4>
+        <p>Designed for teams getting ready to scale their estimating workflow — reusable properties, pricing profiles, quote versions, and role-based access are already part of the foundation.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- TRUST / PHILOSOPHY -->
+<section class="lsec" id="trust">
+  <div class="lwrap">
+    <div class="lsec-head center">
+      <span class="eyebrow-d">Our approach</span>
+      <h2 class="h2">Pricing software you can defend — because you can see how it works.</h2>
+      <p class="lead">Commercial cleaning buyers protect their pricing methodology, client lists, and margins. We built CleanBid to be examined, not just trusted.</p>
+    </div>
+    <div class="trust-grid">
+      <div class="trust-principles">
+        <div class="tp"><div class="n">01</div><div><h5>Transparent math</h5><p>Every quote shows its work — hours, rates, burden, margin. A "Why this price?" breakdown explains each input on demand.</p></div></div>
+        <div class="tp"><div class="n">02</div><div><h5>Your assumptions, not ours</h5><p>Productivity rates, wages, and margins ship as editable defaults. They're labeled as assumptions — never presented as industry truths.</p></div></div>
+        <div class="tp"><div class="n">03</div><div><h5>No invented proof</h5><p>We don't publish customer counts, logos, or testimonials until real customers stand behind them. What you see here is what the product does.</p></div></div>
+        <div class="tp"><div class="n">04</div><div><h5>Built for the trade</h5><p>Area types, task times, packages, and rebid flows mirror how janitorial estimating actually works — not generic invoicing software retrofitted.</p></div></div>
+      </div>
+      <div class="proof-slot" id="proofSlot">
+        <div class="ps-t">From real customers</div>
+        <p>This space is reserved for testimonials and results from actual CleanBid customers — published only after real deployments, with permission, and verifiable on request. We'd rather show you the working demo than borrowed credibility.</p>
+        <p style="margin-top:10px"><a href="#" onclick="enterDemo(); return false;" style="color:var(--accent);font-weight:700">Judge the product yourself →</a></p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- PRICING -->
+<section class="lsec tint" id="pricing">
+  <div class="lwrap">
+    <div class="lsec-head center">
+      <span class="eyebrow-d">Pricing</span>
+      <h2 class="h2">Priced like the tool your revenue depends on.</h2>
+      <p class="lead">CleanBid is professional estimating software for commercial cleaning operations — sold with a conversation about your team and workflow, not a credit-card checkout page.</p>
+    </div>
+    <div class="price-panel">
+      <div class="pp-eyebrow">CleanBid</div>
+      <h3>Professional commercial estimating</h3>
+      <div class="pp-price">
+        <span class="big">Custom quoted</span>
+        <span class="qual">based on your team size & contract volume</span>
+      </div>
+      <ul class="pp-inc">
+        <li>Full estimating & quote-builder workflow</li>
+        <li>Branded PDF proposals</li>
+        <li>Pricing profiles & package tiers</li>
+        <li>Saved properties & rebid history</li>
+        <li>Demo workspace loaded with sample data</li>
+        <li>Data export — your records stay yours</li>
+      </ul>
+      <div class="pp-actions">
+        <button class="btn-primary" onclick="showAuthForms()">Request a Pricing Conversation</button>
+        <button class="btn-outline-l" onclick="enterDemo()">Try the Demo First</button>
+      </div>
+      <p class="pp-fineprint">Start with the free interactive demo — sample data included, no account required. When you're ready for a live workspace, we'll set it up with you and confirm pricing based on your operation. No setup fee surprises; whatever is agreed gets put in writing before you commit.</p>
+      <div class="price-faq-mini">
+        <div><b>Is there a free trial?</b> Yes — the interactive demo runs the full product with sample data, right now, no signup.</div>
+        <div><b>Is it for individual cleaners?</b> It's built for companies that quote commercial work — solo operators welcome, teams get the most from it.</div>
+        <div><b>What happens after the demo?</b> You request a workspace; we align on pricing and get your team onboarded.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section class="lsec" id="faq">
+  <div class="lwrap">
+    <div class="lsec-head center">
+      <span class="eyebrow-d">FAQ</span>
+      <h2 class="h2">Questions buyers actually ask.</h2>
+    </div>
+    <div class="faq-wrap">
+      <div class="faq">
+        <button class="faq-q" aria-expanded="false">Is CleanBid only for large cleaning companies?<span class="chev" aria-hidden="true">+</span></button>
+        <div class="faq-a"><div class="faq-a-inner">No. It fits any company bidding recurring commercial work — from a small operator tired of spreadsheet chaos to multi-estimator teams. If you quote by building size and frequency, the workflow will feel familiar.</div></div>
+      </div>
+      <div class="faq">
+        <button class="faq-q" aria-expanded="false">Can I try CleanBid before buying?<span class="chev" aria-hidden="true">+</span></button>
+        <div class="faq-a"><div class="faq-a-inner">Yes — that's the primary way to evaluate it. The interactive demo loads the complete product with realistic sample data: survey a building, adjust pricing assumptions, generate a proposal. No account or payment details required.</div></div>
+      </div>
+      <div class="faq">
+        <button class="faq-q" aria-expanded="false">Do I need to upload my existing spreadsheets?<span class="chev" aria-hidden="true">+</span></button>
+        <div class="faq-a"><div class="faq-a-inner">No import step is required to start. Most teams recreate their key numbers — wage, burden, overhead, productivity rates — in CleanBid's settings in minutes, then let the engine handle the math going forward. Your historical quotes can be rebuilt as needed.</div></div>
+      </div>
+      <div class="faq">
+        <button class="faq-q" aria-expanded="false">Can I customize pricing and labor assumptions?<span class="chev" aria-hidden="true">+</span></button>
+        <div class="faq-a"><div class="faq-a-inner">Yes — extensively. Wages, payroll burden, supplies, overhead, target margin, minimum price, and per-area-type productivity rates are all editable. Pricing profiles let you switch whole assumption sets (medical-grade, industrial, etc.) per quote, and individual quotes support their own overrides.</div></div>
+      </div>
+      <div class="faq">
+        <button class="faq-q" aria-expanded="false">What happens to my data?<span class="chev" aria-hidden="true">+</span></button>
+        <div class="faq-a"><div class="faq-a-inner">Your workspace data belongs to you and can be downloaded as a backup file at any time from inside the app. Workspaces run either locally in your browser or synced to your company's cloud database — the app never silently moves your data between the two.</div></div>
+      </div>
+      <div class="faq">
+        <button class="faq-q" aria-expanded="false">What happens if I stop using CleanBid?<span class="chev" aria-hidden="true">+</span></button>
+        <div class="faq-a"><div class="faq-a-inner">You keep your data. Backups download as portable JSON files containing your customers, properties, quotes, and pricing settings — readable outside the app. There's no lock-in clause holding your estimating history hostage.</div></div>
+      </div>
+      <div class="faq">
+        <button class="faq-q" aria-expanded="false">Can multiple people use it?<span class="chev" aria-hidden="true">+</span></button>
+        <div class="faq-a"><div class="faq-a-inner">Yes. Workspaces support multiple users with three roles — Admin, Estimator, and Sales — each with defined permissions over quotes, pricing rules, branding, and user management. Invitations are sent by email from the Users & Roles page.</div></div>
+      </div>
+      <div class="faq">
+        <button class="faq-q" aria-expanded="false">Does CleanBid create client-ready proposals?<span class="chev" aria-hidden="true">+</span></button>
+        <div class="faq-a"><div class="faq-a-inner">Yes. Every quote converts into a branded proposal document — your logo, accent color, contact details, terms, and footer text — printable straight to PDF. Proposals store snapshot pricing, so what you sent stays exactly what was sent.</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FINAL CTA -->
+<section class="finalcta">
+  <div class="lwrap">
+    <h2>Walk the building once.<br>Quote it in minutes.</h2>
+    <p>Run the interactive demo with sample data — survey, labor math, pricing, and a finished proposal. See whether it could replace the process you're using now.</p>
+    <div class="cta-row">
+      <button class="btn-hero" onclick="enterDemo()">Try the Interactive Demo →</button>
+      <a class="btn-hero-o" href="#" onclick="showAuthForms(); return false;">Request a Pricing Conversation</a>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER (public) -->
+<footer class="lfoot">
+  <div class="lwrap">
+    <div class="lfoot-grid">
+      <div>
+        <div class="mark-foot"><div class="m">C</div>CleanBid</div>
+        <p class="lfoot-tag">Commercial cleaning estimating software — site surveys in, defensible pricing and proposals out.</p>
+      </div>
+      <div class="lfoot-cols">
+        <div class="col"><span>Legal</span><a href="/legal/privacy">Privacy Policy</a><a href="/legal/terms">Terms</a><a href="/legal/disclaimer">Disclaimer</a><a href="/legal/refunds">Refunds</a></div>
+        <div class="col"><span>Product</span><a href="#how">How It Works</a><a href="#sample">Sample Estimate</a><a href="#pricing">Pricing</a><a href="#faq">FAQ</a></div>
+        <div class="col"><span>Account</span><a href="#" onclick="showAuthForms(); return false;">Sign In</a><a href="#" onclick="showAuthForms(); return false;">Create Workspace</a><a href="#" onclick="enterDemo(); return false;">Try Demo</a></div>
+      </div>
+    </div>
+    <div class="lfoot-copy">
+      <span>© 2026 CleanBid. All rights reserved.</span>
+      <span>Contact: hello@getcleanbid.app</span>
+    </div>
+  </div>
+</footer>

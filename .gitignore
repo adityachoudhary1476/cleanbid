@@ -31,3 +31,6 @@ temp
 # Research artifacts
 .sales-research/
 research/
+
+# landing QA artifacts
+shots/
