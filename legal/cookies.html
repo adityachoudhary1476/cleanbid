@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cookie Policy · CleanBid</title>
+<meta name="description" content="What CleanBid stores in your browser: no tracking cookies, and how browser local storage differs from cookies.">
+<link rel="icon" href="/logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/legal/legal.css">
+</head>
+<body>
+<div class="legal">
+
+  <header class="l-top">
+    <a class="brand" href="/">
+      <img src="/logo.png" alt="CleanBid logo">
+      <span>CleanBid</span>
+    </a>
+    <nav aria-label="Site">
+      <a href="/">App</a>
+      <a href="/legal/" aria-current="page">Legal</a>
+    </nav>
+  </header>
+
+  <div class="l-wrap">
+    <aside class="l-side">
+      <div class="eyebrow">Policies</div>
+      <ul>
+        <li><a href="/legal/">Overview</a></li>
+        <li><a href="/legal/privacy">Privacy Policy</a></li>
+        <li><a href="/legal/terms">Terms of Use</a></li>
+        <li><a href="/legal/disclaimer">Disclaimer</a></li>
+        <li><a href="/legal/cookies">Cookie Policy</a></li>
+        <li><a href="/legal/refunds">Refund &amp; Cancellation</a></li>
+        <li><a href="/legal/acceptable-use">Acceptable Use</a></li>
+      </ul>
+    </aside>
+
+    <main class="l-main l-doc" id="main">
+      <p class="eyebrow">CleanBid policies</p>
+      <h1>Cookie Policy</h1>
+      <p class="l-updated"><b>Last updated:</b> August 25, 2026 &nbsp;·&nbsp; Questions? <a href="mailto:getfinova@gmail.com">getfinova@gmail.com</a></p>
+
+      <div class="l-body">
+        <div class="l-note"><b>The short version:</b> CleanBid does not use advertising, analytics, or tracking cookies. The app keeps your data in your browser's <strong>local storage</strong>, which is a different mechanism — it is never sent to any server. If you sign in to a cloud workspace, the authentication provider maintains your login session using browser storage under its own configuration.</div>
+
+        <h2 id="cookies-vs-storage">Cookies vs. browser local storage</h2>
+        <p>A cookie is a small piece of text a website asks your browser to store; browsers attach relevant cookies to requests sent back to that site's servers. <strong>Local storage</strong> is separate: data saved by the site into your browser's on-device database. Local storage is readable only by scripts from this site in this browser and is <em>not</em> attached to network traffic.</p>
+        <p>CleanBid's quote builder runs primarily in your browser and uses local storage — not cookies — to remember your work between visits. We keep the distinction exact because they behave differently: cookies travel with requests; local storage stays put.</p>
+
+        <h2 id="what-we-set">What CleanBid itself sets</h2>
+        <p><strong>Cookies set directly by CleanBid: none.</strong> There are no tracking pixels, no analytics identifiers (no Google Analytics or similar), no advertising cookies, no social-media tags, and no fingerprinting anywhere in the application or on these policy pages.</p>
+
+        <h2 id="local-storage-keys">Browser local storage CleanBid uses</h2>
+        <p>In normal operation the app writes the following entries into your browser's local storage for this site:</p>
+        <ul>
+          <li><code>cleanbid_v3</code> (+ optional per-workspace suffixes) — your workspace data in signed-out mode: customers, properties, quotes, pricing profiles, settings;</li>
+          <li><code>cleanbid_demo_v3</code> — the demo dataset, kept separate so demo work never mixes with real work;</li>
+          <li><code>cleanbid_active_workspace</code> — which workspace was last open in cloud mode;</li>
+          <li><code>cleanbid_safety_snapshots_v1</code> — automatic safety snapshots before restores;</li>
+          <li><code>cleanbid_last_export_*</code> — when you last exported a backup.</li>
+        </ul>
+        <p>All of this stays on your device until you remove it by clearing site data in your browser. Clearing it also deletes your local quotes, so export anything you want to keep first.</p>
+
+        <h2 id="sign-in-sessions">Sign-in sessions (cloud mode)</h2>
+        <p>If you create an account or sign in, authentication is handled by Supabase Auth. Keeping you signed in requires the auth provider to maintain a session in your browser — typically via storage tied to its own domain setup rather than classic first-party cookies. This session storage is strictly functional (it exists so you don't have to re-enter your password on every page) and carries no tracking purpose. Signing out ends it; you can also clear it via your browser settings.</p>
+
+        <h2 id="third-party-requests">Third-party requests that may involve your browser</h2>
+        <ul>
+          <li><strong>Google Fonts</strong> — typefaces load from Google's servers each visit. Google may set its own cookies/storage per its policies when its resources are requested; we don't control that and receive none of it.</li>
+          <li><strong>Vercel</strong> — serves the application files as our host.</li>
+          <li><strong>SheetJS CDN</strong> — only loaded if you import an Excel file.</li>
+        </ul>
+
+        <h2 id="managing">Managing cookies and storage</h2>
+        <p>You can clear cookies and site data — including everything listed above — at any time through your browser settings (usually under Privacy → Site data). Blocking storage outright will break saving in the app: local-mode CleanBid has nowhere else to put your quotes. Because we set no marketing cookies, there is nothing to opt out of and no consent banner needed for one.</p>
+
+        <h2 id="changes">Changes to this policy</h2>
+        <p>If we ever add a genuinely necessary cookie or third-party script, we'll update this page and the "Last updated" date before it ships.</p>
+
+        <h2 id="contact">Contact</h2>
+        <p>Questions about this policy:<br>
+        Email: <a href="mailto:getfinova@gmail.com">getfinova@gmail.com</a></p>
+      </div>
+    </main>
+  </div>
+
+  <footer class="l-foot">
+    <div class="mark"><i>C</i>CleanBid</div>
+    <a href="/">Open the app</a>
+    <a href="/legal/">All policies</a>
+    <span class="copy">© 2026 CleanBid</span>
+  </footer>
+
+</div>
+</body>
+</html>

@@ -1,1 +1,15 @@
-/* /index.html 200
+#  CleanBid redirects (Netlify-style; Vercel reads this file too)
+#  App shell serves at "/" via the emit-root-index build step.
+
+#  Legal pages: clean extensionless URLs
+/legal            /legal/index.html          200
+/legal/           /legal/index.html          200
+/legal/privacy    /legal/privacy.html        200
+/legal/terms      /legal/terms.html          200
+/legal/disclaimer /legal/disclaimer.html     200
+/legal/cookies    /legal/cookies.html        200
+/legal/refunds    /legal/refunds.html        200
+/legal/acceptable-use /legal/acceptable-use.html 200
+
+#  SPA fallback for the app itself (keep last)
+/*                /index.html                200

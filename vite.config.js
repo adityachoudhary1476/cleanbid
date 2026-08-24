@@ -25,8 +25,38 @@ function emitRootIndex() {
   };
 }
 
+/**
+ * Legal pages are linked without extensions (/legal/privacy, /legal/, …).
+ * Vercel (cleanUrls) and Netlify (_redirects) resolve those in production;
+ * this plugin gives `vite dev` and `vite preview` the same mapping so a
+ * policy URL can be opened or refreshed directly during development.
+ */
+const LEGAL_SLUGS = ['privacy', 'terms', 'disclaimer', 'cookies', 'refunds', 'acceptable-use'];
+function legalCleanUrls() {
+  const handler = (req, res, next) => {
+    const [path] = req.url.split('?');
+    let target = null;
+    if (path === '/legal' || path === '/legal/') {
+      target = '/legal/index.html';
+    } else {
+      const m = /^\/legal\/([a-z-]+)$/.exec(path);
+      if (m && LEGAL_SLUGS.includes(m[1])) target = `/legal/${m[1]}.html`;
+    }
+    if (target) req.url = target;
+    next();
+  };
+  return {
+    name: 'legal-clean-urls',
+    // 'pre' is required: Vite's SPA html-fallback middleware would otherwise
+    // rewrite bare /legal to /index.html (the app stub) before we run.
+    enforce: 'pre',
+    configureServer(server) { server.middlewares.use(handler); },
+    configurePreviewServer(server) { server.middlewares.use(handler); },
+  };
+}
+
 export default defineConfig({
-  plugins: [emitRootIndex()],
+  plugins: [emitRootIndex(), legalCleanUrls()],
   root: '.',
   publicDir: 'public',
   build: {
@@ -35,6 +65,13 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: './03-app-shell.html',
+        legalIndex: resolve(process.cwd(), 'legal', 'index.html'),
+        legalPrivacy: resolve(process.cwd(), 'legal', 'privacy.html'),
+        legalTerms: resolve(process.cwd(), 'legal', 'terms.html'),
+        legalDisclaimer: resolve(process.cwd(), 'legal', 'disclaimer.html'),
+        legalCookies: resolve(process.cwd(), 'legal', 'cookies.html'),
+        legalRefunds: resolve(process.cwd(), 'legal', 'refunds.html'),
+        legalAcceptableUse: resolve(process.cwd(), 'legal', 'acceptable-use.html'),
       },
     },
   },
