@@ -279,7 +279,7 @@ tbody tr:hover{background:var(--paper-3)}
 /* ====================================================================
    QUOTE BUILDER — rewritten with depth
    ==================================================================== */
-.qb{display:grid;grid-template-columns:1fr 1fr 1.1fr;gap:14px;align-items:start}
+.qb{display:grid;grid-template-columns:1fr 1fr 1.1fr;gap:14px;align-items:start;height:100vh;}
 .qb-col{display:flex;flex-direction:column;gap:14px}
 .sb h4{font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--text-muted);font-weight:700;margin-bottom:9px;display:flex;justify-content:space-between;align-items:center}
 .sb h4 .add{color:var(--accent);font-size:11px;text-transform:none;letter-spacing:0;font-weight:700;padding:3px 9px;border-radius:4px}
@@ -476,6 +476,33 @@ tbody tr:hover{background:var(--paper-3)}
 }
 .why-formula strong{display:block;font-family:'Inter',sans-serif;color:var(--accent);text-transform:uppercase;letter-spacing:1px;font-size:10px;margin-bottom:6px;font-weight:700}
 .why-formula .wf-note{display:block;margin-top:8px;font-style:italic;font-size:11.5px;color:var(--text-muted);font-family:'Inter',sans-serif}
+
+/* Editable "Why this price?" assumption rows */
+.why-edit-note{
+  margin-bottom:12px; padding:9px 12px; border-radius:8px;
+  background:var(--info-soft); color:var(--ink);
+  font-size:11.5px; line-height:1.5; font-weight:500;
+}
+.why-edit-row{
+  display:flex; align-items:center; gap:10px;
+  padding:7px 0; border-bottom:1px solid var(--line-soft); font-size:13px;
+}
+.why-edit-row:last-of-type{border-bottom:0}
+.why-edit-row .wr-l{flex:1; min-width:0}
+.why-edit-ctl{display:inline-flex; align-items:center; gap:6px; flex-shrink:0}
+.why-edit-ctl input{
+  width:92px; padding:6px 8px; text-align:right;
+  border:1px solid var(--line); border-radius:6px;
+  font-family:inherit; font-size:13px; color:var(--ink);
+  background:var(--paper-2); font-feature-settings:"tnum";
+}
+.why-edit-ctl input:focus{outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(196,106,58,.08)}
+.why-unit{font-size:11px; color:var(--text-muted); font-weight:600; min-width:22px}
+.why-mod-tag{
+  display:inline-block; margin-left:6px; padding:1px 7px; border-radius:9px;
+  background:var(--warn-soft); color:#8a6014; font-size:9px; font-weight:700;
+  text-transform:uppercase; letter-spacing:.5px; vertical-align:middle;
+}
 .why-area-drill{margin-top:18px;padding-top:14px;border-top:1px solid var(--line-soft)}
 .why-area-drill h4{font-size:10px;text-transform:uppercase;letter-spacing:1.5px;font-weight:700;color:var(--text-muted);margin-bottom:8px}
 .why-area-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line-soft);font-size:13px;flex-wrap:wrap}
@@ -2481,6 +2508,7 @@ document.body.addEventListener('click', function(e){
 
 let _skipBuilderReset = false;
 let _viewingQuoteId = null; // quote currently shown on the proposal page
+let _builderQuoteId = null; // quote currently being edited in the builder (null = new quote)
 
 function resetBuilder(){
   qb.areas = [];
@@ -2490,6 +2518,8 @@ function resetBuilder(){
   qb.propertyId = null;
   qb.override = null;
   qb.calc = null;
+  _builderQuoteId = null; // fresh quote — no quote-level overrides in play
+  window.__pendingWhyOverrides = {}; // clear any unsaved assumption edits
   document.getElementById('qbCustomer').value = '';
   document.getElementById('qbCompany').value = '';
   document.getElementById('qbContact').value = '';
@@ -2545,6 +2575,46 @@ function activePricing(){
   return {...state.pricing, productivity: state.pricing.productivity};
 }
 
+/* ====================================================================
+   QUOTE-LEVEL PRICING OVERRIDES (editable "Why this price?")
+   Stored on each quote object as q.whyOverrides — ONLY fields the user
+   explicitly changed. Never mutates state.pricing / profiles (globals).
+   ==================================================================== */
+
+// Fields the Why-drawer may edit. label = UI name; kind drives validation;
+// get/set map between the drawer field and activePricing()/engine input.
+const WHY_EDITABLE_FIELDS = [
+  { key:'crewHoursOverride', label:'Hours per visit', kind:'hours', step:'0.25', min:0.25 },
+  { key:'wage',              label:'Labor rate',      kind:'money', step:'0.5',  min:0 },
+  { key:'burden',            label:'Payroll burden',  kind:'pct',   step:'0.5',  min:0, max:100 },
+  { key:'supplies',          label:'Supplies',        kind:'pct',   step:'0.5',  min:0, max:100 },
+  { key:'overhead',          label:'Overhead',        kind:'pct',   step:'0.5',  min:0, max:100 },
+  { key:'margin',            label:'Target margin',   kind:'margin',step:'0.5',  min:0, max:99.9 },
+];
+
+function whyDefaults(){
+  // Workspace/profile defaults for every editable field (pre-override values).
+  const P = activePricing();
+  const ENG = buildEngineInput();
+  return {
+    crewHoursOverride: ENG.visitCrewHours || null, // computed from survey
+    wage: P.wage, burden: P.burden, supplies: P.supplies,
+    overhead: P.overhead, margin: P.margin
+  };
+}
+
+function whyOverridesOf(quote){
+  return (quote && quote.whyOverrides && typeof quote.whyOverrides === 'object') ? quote.whyOverrides : {};
+}
+
+// Effective value = override if present else workspace default.
+function whyEffectiveValue(key){
+  const q = state.quotes.find(x=>x.id===_builderQuoteId) || null;
+  const ov = whyOverridesOf(q);
+  const d = whyDefaults();
+  return (ov[key] !== undefined && ov[key] !== null) ? ov[key] : d[key];
+}
+
 // Merge profile-level productivity overrides over global defaults.
 // Empty/undefined overrides fall through to the global rate.
 function mergeProductivity(overrides){
@@ -2582,6 +2652,18 @@ function buildEngineInput(overrides){
     package: qb.package
   };
   if(overrides) Object.assign(base, overrides);
+  // Quote-level "Why this price?" overrides (this quote only, never globals).
+  // Applied LAST so they always win over profile/global defaults.
+  const bq = _builderQuoteId ? state.quotes.find(x=>x.id===_builderQuoteId) : null;
+  const ov = whyOverridesOf(bq);
+  if(ov.wage !== undefined)     base.profile.wage = ov.wage;
+  if(ov.burden !== undefined)   base.profile.burden = ov.burden;
+  if(ov.supplies !== undefined) base.profile.supplies = ov.supplies;
+  if(ov.overhead !== undefined) base.profile.overhead = ov.overhead;
+  if(ov.margin !== undefined)   base.profile.margin = ov.margin;
+  if(ov.crewHoursOverride !== undefined && ov.crewHoursOverride !== null){
+    base.crewHoursOverride = ov.crewHoursOverride; // replaces survey-derived hours
+  }
   return base;
 }
 
@@ -4104,9 +4186,18 @@ function saveDraft(){
     createdIso: new Date().toISOString(),
     modifiedIso: new Date().toISOString(),
     priceSnap:{wage:P.wage,burden:P.burden,overhead:P.overhead,margin:P.margin,minPrice:P.minPrice,supplies:P.supplies},
-    productivitySnap:JSON.parse(JSON.stringify(P.productivity))
+    productivitySnap:JSON.parse(JSON.stringify(P.productivity)),
+    // Editable "Why this price?" — quote-level assumptions (this quote only).
+    // Pending edits from a brand-new unsaved quote are adopted here; an
+    // already-tracked quote keeps its own whyOverrides untouched.
+    whyOverrides:(function(){
+      if(_builderQuoteId){ const ex=state.quotes.find(x=>x.id===_builderQuoteId); return ex?JSON.parse(JSON.stringify(ex.whyOverrides||{})):{}; }
+      const pending = window.__pendingWhyOverrides||{};
+      return Object.keys(pending).length ? JSON.parse(JSON.stringify(pending)) : {};
+    })()
   };
   state.quotes.unshift(q);
+  if(!_builderQuoteId){ _builderQuoteId = q.id; window.__pendingWhyOverrides = {}; }
   state.activity.unshift({avt:'JD',actor:'Jane',what:'saved draft of',object:q.propertyName,time:'just now'});
   saveStateToDb();
   renderQuotes();
@@ -4123,6 +4214,11 @@ function duplicateLast(){
   qb.profileId = last.profileId||'std';
   qb.propertyId = last.propertyId || null;
   qb.override = null; // overrides are judgment for a specific quote — start clean
+  // A duplicate is a NEW quote: start with the source's assumptions as
+  // pending overrides (they were quote-level on the original), but track it
+  // as a fresh builder quote so edits never write back to the source.
+  _builderQuoteId = null;
+  window.__pendingWhyOverrides = JSON.parse(JSON.stringify(last.whyOverrides||{}));
   populateProfileDD();
   document.getElementById('qbCompany').value = last.companyName==='—'?'':last.companyName;
   document.getElementById('qbPropName').value = last.propertyName;
@@ -4324,13 +4420,28 @@ function openWhy(){
   const html = `
     ${formula}
     <div class="why-row"><div class="wr-l">Profile</div><div class="wr-v">${esc(P.profileName)}</div></div>
-    <div class="why-row"><div class="wr-l">Hourly wage</div><div class="wr-v">${curSym()}${P.wage.toFixed(2)}/hr</div></div>
-    <div class="why-row"><div class="wr-l">Hours per visit</div><div class="wr-v">${c.hoursPerVisit.toFixed(1)}</div></div>
+    <div class="why-edit-note">Edit an assumption below — the quote recalculates instantly through the pricing engine. Changes apply to <b>this quote only</b>, never your global pricing rules.</div>
+    ${WHY_EDITABLE_FIELDS.map(f=>{
+      const eff = (f.key==='crewHoursOverride') ? c.hoursPerVisit : whyEffectiveValue(f.key);
+      const isOver = whyOverridesOf(state.quotes.find(x=>x.id===_builderQuoteId))[f.key] !== undefined;
+      const suffix = f.kind==='money' ? curSym() : (f.key==='crewHoursOverride' ? 'hrs' : '%');
+      return `<div class="why-edit-row">
+        <label class="wr-l" for="whyEdit_${f.key}">${f.label}${isOver?' <span class="why-mod-tag">edited</span>':''}</label>
+        <span class="why-edit-ctl">
+          <input id="whyEdit_${f.key}" type="number" step="${f.step}" min="${f.min}" ${f.max?`max=\"${f.max}\"`:''}
+                 value="${eff}" inputmode="decimal"
+                 oninput="commitWhyEdit('${f.key}', this.value)">
+          <span class="why-unit">${suffix}</span>
+          <button class="btn btn-ghost btn-sm why-reset ${isOver?'':'hidden'}" title="Restore workspace default"
+                  onclick="resetWhyField('${f.key}')">↺</button>
+        </span>
+      </div>`;
+    }).join('')}
     <div class="why-row"><div class="wr-l">Cleaners per visit</div><div class="wr-v">${c.cleaners}</div></div>
     <div class="why-row calc-row"><div class="wr-l">Labor cost / visit</div><div class="wr-v">${fmtCurrency(c.laborPerVisit)}</div></div>
-    <div class="why-row"><div class="wr-l">+ Payroll burden (${P.burden}%)</div><div class="wr-v">${fmtCurrency(c.burdenPerVisit)}</div></div>
-    <div class="why-row"><div class="wr-l">+ Supplies (${P.supplies}% × labor)</div><div class="wr-v">${fmtCurrency(c.suppliesPerVisit)}</div></div>
-    <div class="why-row"><div class="wr-l">+ Overhead (${P.overhead}% × burdened)</div><div class="wr-v">${fmtCurrency(c.overheadPerVisit)}</div></div>
+    <div class="why-row"><div class="wr-l">+ Payroll burden</div><div class="wr-v">${fmtCurrency(c.burdenPerVisit)}</div></div>
+    <div class="why-row"><div class="wr-l">+ Supplies</div><div class="wr-v">${fmtCurrency(c.suppliesPerVisit)}</div></div>
+    <div class="why-row"><div class="wr-l">+ Overhead</div><div class="wr-v">${fmtCurrency(c.overheadPerVisit)}</div></div>
     <div class="why-row"><div class="wr-l">+ Add-ons</div><div class="wr-v">${fmtCurrency(c.addonCost)}</div></div>
     <div class="why-row calc-row"><div class="wr-l">Cost per visit</div><div class="wr-v">${fmtCurrency(c.costPerVisit)}</div></div>
     <div class="why-row calc-row"><div class="wr-l">Cost / month (before margin)</div><div class="wr-v">${fmtCurrency(c.costPerVisit*c.visitsPerMonth)}</div></div>
@@ -4340,21 +4451,47 @@ function openWhy(){
     ${qb.calc.overridden?`<div class="why-row total" style="color:var(--warn)"><div class="wr-l">✎ Manually overridden to</div><div class="wr-v">${fmtCurrency(qb.calc.finalMonthly)} — "${esc((qb.override&&qb.override.reason)||'')}"</div></div>`:''}
     <div class="why-row total" style="border-top-style:dashed;border-top-color:var(--line-soft)"><div class="wr-l">Annual contract (×12)</div><div class="wr-v">${fmtCurrency(qb.calc.overridden?qb.calc.finalAnnual:c.annual)}</div></div>
     ${areaDrill}
-    <div class="why-assump">
-      <h4>Assumptions (active profile)</h4>
-      <div class="assump-row"><span>Profile</span><b>${esc(P.profileName)}</b></div>
-      <div class="assump-row"><span>Hourly wage</span><b>${curSym()}${P.wage.toFixed(2)}</b></div>
-      <div class="assump-row"><span>Payroll burden</span><b>${P.burden}%</b></div>
-      <div class="assump-row"><span>Supplies (of labor)</span><b>${P.supplies}%</b></div>
-      <div class="assump-row"><span>Overhead</span><b>${P.overhead}%</b></div>
-      <div class="assump-row"><span>Target gross margin</span><b>${P.margin}%</b></div>
-      <div class="assump-row"><span>Minimum price</span><b>${fmtCurrency(P.minPrice||800)}</b></div>
-      <div class="assump-row"><span>Productivity (open office)</span><b>${(P.productivity.office||2800).toLocaleString()} sq ft / hr</b></div>
-      <div class="assump-row"><span>Package multiplier</span><b>${qb.package==='professional'?'1.00 (Professional)':qb.package==='essential'?'0.92 (Essential)':'1.10 (Premium)'}</b></div>
-    </div>
   `;
   document.getElementById('whyBreakdown').innerHTML = html;
   document.getElementById('whyDrawer').classList.add('show');
+}
+
+/* --- Editable "Why this price?" handlers ------------------------------- */
+
+// Validate + commit one edited assumption, then recalc through the engine.
+function commitWhyEdit(key, rawValue){
+  const f = WHY_EDITABLE_FIELDS.find(x=>x.key===key);
+  if(!f) return;
+  const v = parseFloat(rawValue);
+  // Sensible validation — no arbitrary business limits beyond the engine's own.
+  if(!Number.isFinite(v)){ toast(f.label+': enter a valid number.','warn'); return; }
+  if(v < f.min){ toast(f.label+': must be at least '+f.min+'.','warn'); return; }
+  if(f.max !== undefined && v > f.max){ toast(f.label+': must be at most '+f.max+(f.kind==='margin'?'%':'.'),'warn'); return; }
+
+  // Target the quote being built/edited; for a brand-new unsaved quote,
+  // attach overrides to a lightweight pending object keyed by null.
+  let q = _builderQuoteId ? state.quotes.find(x=>x.id===_builderQuoteId) : null;
+  if(!q){
+    if(!window.__pendingWhyOverrides) window.__pendingWhyOverrides = {};
+    window.__pendingWhyOverrides[key] = v;
+  } else {
+    q.whyOverrides = q.whyOverrides || {};
+    q.whyOverrides[key] = v;
+  }
+  markDirty();
+  recalc();       // single canonical path: buildEngineInput → calculatePricing
+  openWhy();      // re-render drawer with new results + updated "edited" tags
+}
+
+// Reset one field back to the workspace/profile default.
+function resetWhyField(key){
+  let q = _builderQuoteId ? state.quotes.find(x=>x.id===_builderQuoteId) : null;
+  if(q && q.whyOverrides){ delete q.whyOverrides[key]; }
+  else if(window.__pendingWhyOverrides){ delete window.__pendingWhyOverrides[key]; }
+  markDirty();
+  recalc();
+  openWhy();
+  toast('Restored to default.');
 }
 
 // Helper for per-area drill: pick cleaner count roughly equal to whole estimate / 1

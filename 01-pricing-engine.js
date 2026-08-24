@@ -96,14 +96,26 @@ function calculatePricing(input) {
     const taskBonus = a.minTask * K.HOURS_PER_TASK_MINUTE_SLOT;
     visitCrewHours += productiveHours + taskBonus;
   }
+  // Also include global ad-hoc tasks added via the Tasks modal (legacy).
+  const globalTaskMinutes = (tasks || []).reduce((s, t) => s + (Number(t.min) || 0), 0);
+  visitCrewHours += globalTaskMinutes * K.HOURS_PER_TASK_MINUTE_SLOT;
+
+  // Quote-level crew-hours override (editable "Why this price?" feature).
+  // When present and valid, this REPLACES the survey-derived crew hours for
+  // THIS quote only — the caller passes it via input.crewHoursOverride.
+  // It is a quote-level assumption, never a global pricing rule change.
+  // MUST run before visitCleaners is derived so staffing follows the override.
+  if (input.crewHoursOverride !== undefined && input.crewHoursOverride !== null) {
+    const o = Number(input.crewHoursOverride);
+    if (Number.isFinite(o) && o > 0) visitCrewHours = o;
+    // invalid values are ignored — engine falls back to computed hours
+  }
+
   // visitCleaners = floor(totalCrewHours / maxHoursPerCleaner) so the team can
   // actually finish the visit in a single shift. Using a per-area maximum here
   // would *under-staff* any reasonable single-visit cleanup (Case 4 in tests).
   // Round up: a 15.71-hr job splits cleanly into 7 cleaners at 2.5 hrs each.
   const visitCleaners = Math.max(1, Math.ceil(visitCrewHours / K.MAX_HOURS_PER_CLEANER_PER_VISIT));
-  // Also include global ad-hoc tasks added via the Tasks modal (legacy).
-  const globalTaskMinutes = (tasks || []).reduce((s, t) => s + (Number(t.min) || 0), 0);
-  visitCrewHours += globalTaskMinutes * K.HOURS_PER_TASK_MINUTE_SLOT;
 
   // 3. Total monthly visits across all areas (drives monthly revenue).
   let monthlyVisits = 0;
