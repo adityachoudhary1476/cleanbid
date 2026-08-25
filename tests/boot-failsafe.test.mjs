@@ -49,4 +49,23 @@ describe('boot fail-safe (cream-screen regression)', () => {
     expect(html).toContain('[CleanBid Boot ERROR]');
     expect(html).toContain('couldn’t finish loading'); // curly apostrophe as in source
   });
+
+  it('public homepage (#view-login) closes before the app shell (#view-app)', () => {
+    // REGRESSION for the white-screen bug: #view-login was never closed, so
+    // #view-app got parsed as a CHILD of #view-login. When login hid
+    // #view-login, the entire app shell (nested inside it) was hidden -> a
+    // permanent white/cream screen. Assert the two are siblings, i.e. the
+    // landing div block is balanced (open count == close count) before #view-app.
+    const open = html.indexOf('<div id="view-login"');
+    const appIdx = html.indexOf('<div id="view-app"');
+    expect(open).toBeGreaterThan(0);
+    expect(appIdx).toBeGreaterThan(open);
+    const block = html.slice(open, appIdx);
+    // Count <div (excluding </div) and </div within the landing block.
+    // Skip script/style internals so JS template strings don't skew counts.
+    const stripped = block.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<style[\s\S]*?<\/style>/gi, '');
+    const opens = (stripped.match(/<div\b/gi) || []).length;
+    const closes = (stripped.match(/<\/div>/gi) || []).length;
+    expect(opens).toBe(closes); // balanced => #view-app is a sibling, not nested
+  });
 });
