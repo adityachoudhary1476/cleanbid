@@ -5329,28 +5329,78 @@ function openEmail(qid){
   // P0-3: send acts on the quote being viewed, not blindly quotes[0].
   const q = (qid ? state.quotes.find(x=>x.id===qid) : null) || state.quotes[0];
   if(!q) return;
+  window.__emailTargetId = q.id;
   document.getElementById('emailTo').value = q&&q.email||'';
   document.getElementById('emailSubject').value = 'Cleaning proposal — '+(q?q.propertyName:'your property');
   document.getElementById('emailBody').value = 'Hi '+(q?(q.contact||'there'):'there')+',\n\nPlease find attached our commercial cleaning proposal for '+(q?q.propertyName:'your property')+'. Happy to walk through any questions.\n\nBest,\n'+state.org.name;
   openModal('emailModal');
 }
+let _emailSending = false; // rapid-click / duplicate guard
 function commitEmail(){
-  // P0-3: sending is a pipeline event — record it on the quote.
-  const q = state.quotes[0];
-  if(q){
-    if(['draft','ready'].includes(q.status)) q.status = 'sent';
-    if(!q.followup){
-      const d = new Date(); d.setDate(d.getDate()+7);
-      q.followup = d.toISOString().slice(0,10);
-    }
-    q.sentIso = new Date().toISOString();
-    state.activity.unshift({avt:'JD',actor:'Jane',what:'sent proposal for',object:q.propertyName,time:'just now'});
-    saveStateToDb();
-    renderQuotes(); renderDash();
+  // P0-3: send acts on the quote being viewed (the one the modal was opened for),
+  // never blindly quotes[0] or stale local state.
+  const q = (window.__emailTargetId && state.quotes.find(x=>x.id===window.__emailTargetId)) || state.quotes[0];
+  if(!q){ toast('No quote selected to send.','warn'); return; }
+  const to = (document.getElementById('emailTo').value||'').trim();
+  const subj = document.getElementById('emailSubject').value;
+  const body = document.getElementById('emailBody').value;
+  if(!to){ toast('Enter a recipient email address.','warn'); return; }
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(to)){ toast('That email address doesn’t look valid.','warn'); return; }
+  if(_emailSending) { toast('Already sending — please wait.', 'warn'); return; }
+
+  const session = (window.__cleanbid_auth && window.__cleanbid_auth.getSession && window.__cleanbid_auth.getSession()) || null;
+  const authToken = session && session.access_token ? session.access_token : null;
+  const isCloud = window.__cleanbid_auth && window.isCloud && window.__cleanbid_auth && window.__cleanbid_auth.getSession;
+  const cloudMode = !!(window.__cleanbid_user && session);
+
+  // ---- Demo / local mode: no server exists, so no real email can be sent. ----
+  if(!cloudMode){
+    setEmailBusy(false);
+    closeModal('emailModal');
+    toast('You’re in demo mode — proposals aren’t emailed. Sign in to a workspace to send real proposals.','warn');
+    return;
   }
-  closeModal('emailModal');
-  toast('Proposal marked as sent. Follow-up set in 7 days.', 'success');
+
+  setEmailBusy(true);
+  _emailSending = true;
+  const btn = document.querySelector('#emailModal .m-foot .btn-accent');
+  const orig = btn ? btn.textContent : '';
+  if(btn){ btn.disabled = true; btn.textContent = 'Sending…'; }
+
+  fetch('/api/send-proposal', {
+    method:'POST',
+    headers:{ 'Content-Type':'application/json', ...(authToken?{'Authorization':'Bearer '+authToken}:{}) },
+    body: JSON.stringify({ quoteId:q.id, to, subject:subj, message:body })
+  })
+  .then(async (r)=>{
+    let data={}; try{ data = await r.json(); }catch(_){}
+    setEmailBusy(false);
+    _emailSending = false;
+    if(btn){ btn.disabled=false; btn.textContent=orig; }
+    if(r.ok && data.ok){
+      // Server is the source of truth for status. Reflect on local quote + history.
+      if(['draft','ready'].includes(q.status)) q.status='sent';
+      if(!q.followup){ const d=new Date(); d.setDate(d.getDate()+7); q.followup=d.toISOString().slice(0,10); }
+      q.sentIso=new Date().toISOString();
+      const statusLabel = (data.status==='delivered') ? 'delivered' : 'sent';
+      state.activity.unshift({avt:(window.__cleanbid_user&&window.__cleanbid_user.full_name||'You').slice(0,2).toUpperCase(), actor:(window.__cleanbid_user&&window.__cleanbid_user.full_name)||'You', what:'sent proposal to '+to, object:q.propertyName, time:'just now', meta:{ status:statusLabel, providerId:data.providerId||null }});
+      saveStateToDb();
+      renderQuotes(); renderDash(); renderActivity();
+      closeModal('emailModal');
+      toast(data.message||'Proposal sent.','success');
+    } else {
+      const msg = (data && data.message) ? data.message : ('Could not send the proposal (HTTP '+r.status+').');
+      toast(msg + (data.code==='DUPLICATE'||data.code==='RATE_LIMITED' ? '' : ' You can retry.'), 'error', 6000);
+    }
+  })
+  .catch((err)=>{
+    setEmailBusy(false);
+    _emailSending = false;
+    if(btn){ btn.disabled=false; btn.textContent=orig; }
+    toast('Network error while sending. Please check your connection and try again.','error',6000);
+  });
 }
+function setEmailBusy(_){ /* reserved hook for future spinner state */ }
 
 /* ====================================================================
    AI NOTES — deterministic rewrite of survey notes
@@ -5755,11 +5805,30 @@ function commitInvite(){
   const email = document.getElementById('ivEmail').value.trim();
   const role = document.getElementById('ivRole').value;
   if(!name||!email){ toast('Name and email required.','warn'); return; }
-  state.users.push({id:Date.now(),name,email,role,lastActive:'Never'});
-  saveStateToDb();
-  renderUsers();
-  closeModal('inviteModal');
-  toast('Invitation queued.');
+  const ws = window.__cleanbid_current_workspace;
+  if(!ws || !ws.id){ toast('No active workspace.','warn'); return; }
+  if(!window.__cleanbid_auth || !window.__cleanbid_auth.inviteTeamMember){
+    toast('Invitations require cloud mode.','warn'); return;
+  }
+  const sendBtn = document.querySelector('#inviteModal .btn-accent');
+  if(sendBtn){ sendBtn.disabled = true; sendBtn.textContent = 'Sending…'; }
+  window.__cleanbid_auth.inviteTeamMember(ws.id, email, role)
+    .then(({ token }) => {
+      // Token is the raw invite link; in production this is emailed.
+      const link = location.origin + location.pathname + '?invite=' + encodeURIComponent(token);
+      state.users.push({ id: 'inv-' + Date.now(), name, email, role, lastActive: 'Invited', inviteLink: link });
+      saveStateToDb(); renderUsers();
+      closeModal('inviteModal');
+      toast('Invitation created. Share the invite link with ' + email + '.', 'success');
+      // Surface the link so it can be copied manually.
+      console.log('[CleanBid] Invite link:', link);
+    })
+    .catch(err => {
+      toast(err.message || 'Failed to create invitation.', 'warn');
+    })
+    .finally(() => {
+      if(sendBtn){ sendBtn.disabled = false; sendBtn.textContent = 'Send invitation'; }
+    });
 }
 
 /* ====================================================================
@@ -6122,7 +6191,23 @@ console.log('[CleanBid] ready v2');
       if (user && session) {
         // User is authenticated
         window.__cleanbid_is_authenticated = true;
-        
+
+        // F1: accept a pending invitation from ?invite=<token> (must happen
+        // before workspace selection; the RPC validates email/expiry/use).
+        const pendingToken = new URLSearchParams(location.search).get('invite');
+        if (pendingToken && window.__cleanbid_auth.acceptInvitation) {
+          try {
+            const res = await window.__cleanbid_auth.acceptInvitation(pendingToken);
+            const url = new URL(location.href);
+            url.searchParams.delete('invite');
+            history.replaceState(null, '', url.pathname + url.search);
+            toast('You joined a workspace as ' + (res.role || 'member') + '.', 'success');
+          } catch (invErr) {
+            console.warn('[CleanBid] Invitation acceptance failed:', invErr);
+            toast(invErr.message || 'Invitation could not be accepted.', 'warn');
+          }
+        }
+
         // Get workspaces
         const workspaces = await window.__cleanbid_workspace.getWorkspaces();
         
@@ -6158,14 +6243,14 @@ console.log('[CleanBid] ready v2');
 </script>
 
 <script type="module">
-  import { initAuth, signUp, signIn, signOut, getCurrentUser, getSession } from './src/auth.js';
+  import { initAuth, signUp, signIn, signOut, getCurrentUser, getSession, inviteTeamMember, acceptInvitation } from './src/auth.js';
   import { initDb, saveState, loadState, loadDemoState, saveDemoState, setCurrentWorkspaceId, getDbMode, flushSave, restoreStateToSupabase } from './src/db.js';
   import { initWorkspace, getWorkspaces, createNewWorkspace } from './src/workspace.js';
   import { bootstrap } from './src/main.js';
   import * as StateApi from './src/state.js';
   import { buildBackup, validateBackup, applyBackup, summarizeState } from './src/backup.js';
 
-  window.__cleanbid_auth = { initAuth, signUp, signIn, signOut, getCurrentUser, getSession };
+  window.__cleanbid_auth = { initAuth, signUp, signIn, signOut, getCurrentUser, getSession, inviteTeamMember, acceptInvitation };
   window.__cleanbid_db = { initDb, saveState, loadState, loadDemoState, saveDemoState, setCurrentWorkspaceId, getDbMode, flushSave, restoreStateToCloud: restoreStateToSupabase };
   window.__cleanbid_workspace = { initWorkspace, getWorkspaces, createNewWorkspace };
   window.__cleanbid_bootstrap = bootstrap;

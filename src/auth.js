@@ -216,6 +216,48 @@ export async function getWorkspaceById(workspaceId) {
 }
 
 /**
+ * Invite a team member to a workspace (F1).
+ * Delegates entirely to the SECURITY DEFINER RPC, which enforces that the
+ * caller is an admin/owner, blocks role escalation, prevents duplicates, and
+ * returns the raw invitation token (delivered out-of-band by the caller).
+ *
+ * @returns {Promise<{token:string}>}
+ */
+export async function inviteTeamMember(workspaceId, email, role) {
+  if (!isCloudMode || !supabase || !currentSession) {
+    throw new Error('Invitations require Supabase configuration');
+  }
+  if (!workspaceId || !email) throw new Error('Workspace and email are required');
+  const { data, error } = await supabase.rpc('create_workspace_invitation', {
+    p_workspace: workspaceId,
+    p_email: String(email).trim().toLowerCase(),
+    p_role: role || 'estimator',
+  });
+  if (error) throw error;
+  return { token: data };
+}
+
+/**
+ * Accept a workspace invitation by its raw token (F1).
+ * The RPC verifies expiry, one-time use, and that the caller's VERIFIED email
+ * matches the invited email before creating the membership.
+ *
+ * @returns {Promise<{workspace_id:string, role:string}>}
+ */
+export async function acceptInvitation(token) {
+  if (!isCloudMode || !supabase || !currentSession) {
+    throw new Error('Accepting an invitation requires authentication');
+  }
+  if (!token) throw new Error('Invitation token is required');
+  const { data, error } = await supabase.rpc('accept_workspace_invitation', {
+    p_token: String(token),
+  });
+  if (error) throw error;
+  await getUserWorkspaces();
+  return data;
+}
+
+/**
  * Create a new workspace for the current user with OWNER membership.
  */
 export async function createWorkspace(name) {
