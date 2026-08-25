@@ -2825,11 +2825,22 @@ async function loadStateFromDb(){
     return;
   }
   let saved = null;
-  if(window.__cleanbid_db && window.__cleanbid_db.loadState){
-    saved = await window.__cleanbid_db.loadState();
-  } else if(typeof loadState === 'function'){
-    // Local fallback used when the DB module is unavailable (e.g. tests)
-    saved = loadState();
+  try {
+    if(window.__cleanbid_db && window.__cleanbid_db.loadState){
+      // Race the DB load against a 10s timeout. If cloud queries stall
+      // (e.g. network blocked by the browser), still render the app with a
+      // clean slate instead of freezing on the cream loading screen.
+      saved = await Promise.race([
+        window.__cleanbid_db.loadState(),
+        new Promise((res) => setTimeout(() => res(null), 10000)),
+      ]);
+    } else if(typeof loadState === 'function'){
+      // Local fallback used when the DB module is unavailable (e.g. tests)
+      saved = loadState();
+    }
+  } catch (e) {
+    console.error('[CleanBid] loadState failed — starting blank:', e);
+    saved = null;
   }
   if(saved && Object.prototype.toString.call(saved) === '[object Object]' && Object.keys(saved).length > 0){
     // Use the canonical module implementation when present, otherwise the
@@ -6177,6 +6188,17 @@ console.log('[CleanBid] ready v2');
   // the sole caller to avoid double-init races.
   window.__cleanbid_initAuthFlow = initAuthFlow;
 
+  // Safety net: if anything in the auth chain hangs or throws without
+  // hitting a catch, force-hide the full-screen loading overlay so the
+  // user never gets stuck on a blank cream screen. Brave's privacy
+  // blocking can stall Supabase calls; this guarantees a visible page.
+  function forceDismissAuthLoading() {
+    const el = document.getElementById('authLoading');
+    if (el) el.classList.add('hidden');
+  }
+  // Hard timeout: never keep the overlay up longer than 8s.
+  setTimeout(forceDismissAuthLoading, 8000);
+
   async function initAuthFlow() {
     // Show loading
     document.getElementById('authLoading').classList.remove('hidden');
@@ -6244,12 +6266,44 @@ console.log('[CleanBid] ready v2');
 </script>
 
 <script type="module">
-  import { initAuth, signUp, signIn, signOut, getCurrentUser, getSession, inviteTeamMember, acceptInvitation } from './src/auth.js';
-  import { initDb, saveState, loadState, loadDemoState, saveDemoState, setCurrentWorkspaceId, getDbMode, flushSave, restoreStateToSupabase } from './src/db.js';
-  import { initWorkspace, getWorkspaces, createNewWorkspace } from './src/workspace.js';
-  import { bootstrap } from './src/main.js';
-  import * as StateApi from './src/state.js';
-  import { buildBackup, validateBackup, applyBackup, summarizeState } from './src/backup.js';
+  // NOTE: a top-level `import` failure (e.g. Brave blocking a module/chunk,
+  // or a transient CDN error) would otherwise leave the full-screen
+  // #authLoading overlay stuck forever. We register a window error handler
+  // BEFORE the imports run and force-dismiss the overlay on any failure.
+  function __dismissAuthLoading() {
+    const el = document.getElementById('authLoading');
+    if (el) el.classList.add('hidden');
+  }
+  window.addEventListener('error', function (e) {
+    if (e && e.message && /authLoading|module|import|fetch|supabase/i.test(e.message)) {
+      console.warn('[CleanBid] Unhandled error during boot — dismissing loading overlay:', e.message);
+      __dismissAuthLoading();
+    }
+  });
+
+  let mods;
+  try {
+    mods = await Promise.all([
+      import('./src/auth.js'),
+      import('./src/db.js'),
+      import('./src/workspace.js'),
+      import('./src/main.js'),
+      import('./src/state.js').then(m => ({ StateApi: m })),
+      import('./src/backup.js').then(m => ({ backup: m })),
+    ]);
+  } catch (err) {
+    console.error('[CleanBid] Module import failed — showing landing page:', err);
+    __dismissAuthLoading();
+    throw err; // surface in console; landing page remains visible
+  }
+
+  const [authMod, dbMod, wsMod, mainMod, stateMod, backupMod] = mods;
+  const { initAuth, signUp, signIn, signOut, getCurrentUser, getSession, inviteTeamMember, acceptInvitation } = authMod;
+  const { initDb, saveState, loadState, loadDemoState, saveDemoState, setCurrentWorkspaceId, getDbMode, flushSave, restoreStateToSupabase } = dbMod;
+  const { initWorkspace, getWorkspaces, createNewWorkspace } = wsMod;
+  const { bootstrap } = mainMod;
+  const StateApi = stateMod.StateApi;
+  const backup = backupMod.backup;
 
   window.__cleanbid_auth = { initAuth, signUp, signIn, signOut, getCurrentUser, getSession, inviteTeamMember, acceptInvitation };
   window.__cleanbid_db = { initDb, saveState, loadState, loadDemoState, saveDemoState, setCurrentWorkspaceId, getDbMode, flushSave, restoreStateToCloud: restoreStateToSupabase };
@@ -6257,7 +6311,7 @@ console.log('[CleanBid] ready v2');
   window.__cleanbid_bootstrap = bootstrap;
   // Canonical workspace state-boundary helpers (used by loadStateFromDb).
   window.__cleanbid_stateapi = StateApi;
-  window.__cleanbid_backupapi = { buildBackup, validateBackup, applyBackup, summarizeState };
+  window.__cleanbid_backupapi = { buildBackup: backup.buildBackup, validateBackup: backup.validateBackup, applyBackup: backup.applyBackup, summarizeState: backup.summarizeState };
 
   // Trigger auth flow now that modules are registered
   if (window.__cleanbid_initAuthFlow) {
