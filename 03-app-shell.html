@@ -4898,7 +4898,7 @@ function openWhy(){
     <div class="why-area-drill">
       <h4>Per-area labor drill-down</h4>
       ${c.areaHours.map(a => {
-        const prod = c.baseProd;
+        const prod = a.prod;
         const pct = a.hoursMonth / Math.max(1, c.areaHours.reduce((s,x)=>s+x.hoursMonth,0)) * 100;
         return `<div class="why-area-row">
           <div class="wa-name">${esc(a.name)}</div>
