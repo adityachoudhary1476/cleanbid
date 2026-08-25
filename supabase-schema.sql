@@ -317,7 +317,22 @@ CREATE POLICY "Users can create workspaces" ON workspaces
 DROP POLICY IF EXISTS "Users can insert own profile" ON users;
 CREATE POLICY "Users can insert own profile" ON users FOR INSERT WITH CHECK (id = auth.uid());
 DROP POLICY IF EXISTS "Users can update own profile" ON users;
-CREATE POLICY "Users can update own profile" ON users FOR UPDATE USING (id = auth.uid());
+CREATE POLICY "Users can update own profile" ON users
+  FOR UPDATE USING (id = auth.uid()) WITH CHECK (id = auth.uid());
+-- SELECT policy: required so PostgREST upsert()'s conflict-detection SELECT is
+-- permitted under RLS, and so team-member listings (db.js: users(id,email) via
+-- workspace_members join) work. A user may read only their own profile or the
+-- profiles of users who share a workspace with them. No cross-workspace leakage.
+DROP POLICY IF EXISTS "Users can view own and workspace peers" ON users;
+CREATE POLICY "Users can view own and workspace peers" ON users
+  FOR SELECT USING (
+    id = auth.uid()
+    OR EXISTS (
+      SELECT 1 FROM workspace_members m
+      WHERE m.user_id = users.id
+        AND m.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = auth.uid())
+    )
+  );
 
 -- ---- workspace_members ----
 -- SELECT: a user always sees their own membership rows (self-contained, no
