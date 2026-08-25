@@ -3578,26 +3578,40 @@ function clearSurvey(){
   if(hasAreas) parts.push('survey areas');
   if(hasTasks) parts.push('ad-hoc tasks');
   if(!parts.length) return;
-  if(!confirm('This will remove ' + parts.join(' and ') + ' from the current quote. Customer, property, and saved quotes will not be affected. Continue?')) return;
-  qb.areas = [];
-  qb.tasks = [];
-  recalc();
-  updateSurveyActions();
-  toast('Survey cleared.', 'success');
+  confirmAction({
+    title: 'Clear survey?',
+    message: 'This will remove ' + parts.join(' and ') + ' from the current quote. Customer, property, and saved quotes will not be affected.',
+    confirmLabel: 'Clear Survey',
+    warning: true,
+    onConfirm: function(){
+      qb.areas = [];
+      qb.tasks = [];
+      recalc();
+      updateSurveyActions();
+      toast('Survey cleared.', 'success');
+    }
+  });
 }
 function addChippedArea(type){
-  // P0-4: quick-add must produce a REAL area. Prompt for sqft inline
-  // (no modal round-trip); cancel = no junk placeholder in the survey.
+  // P0-4: quick-add must produce a REAL area. Ask for sqft via a styled
+  // input modal (no native prompt); cancel = no junk placeholder in the survey.
   const label = cap(type) + ' — size?';
-  const raw = prompt(label, '5000');
-  if(raw === null) return;                       // user cancelled — add nothing
-  const sqft = parseFloat(String(raw).replace(/[^0-9.]/g,''));
-  if(!(sqft > 0)){ toast('Enter a valid square footage.','warn'); return; }
-  qb.areas.push({id:Date.now(),name:cap(type),sqft,type:type,floor:'Mixed',diff:'Standard',freq:5});
-  lastChipType = type;
-  recalc();
-  updateSurveyActions();
-  toast('Added '+cap(type)+' · '+Math.round(sqft).toLocaleString()+' sq ft.', 'success');
+  promptAction({
+    title: label,
+    message: 'Enter the square footage for this ' + cap(type) + '.',
+    defaultValue: '5000',
+    confirmLabel: 'Add area',
+    onConfirm: function(raw){
+      if(raw === null || raw === undefined) return;        // user cancelled — add nothing
+      const sqft = parseFloat(String(raw).replace(/[^0-9.]/g,''));
+      if(!(sqft > 0)){ toast('Enter a valid square footage.','warn'); return; }
+      qb.areas.push({id:Date.now(),name:cap(type),sqft,type:type,floor:'Mixed',diff:'Standard',freq:5});
+      lastChipType = type;
+      recalc();
+      updateSurveyActions();
+      toast('Added '+cap(type)+' · '+Math.round(sqft).toLocaleString()+' sq ft.', 'success');
+    }
+  });
 }
 document.querySelectorAll('.type-chip').forEach(b=>b.addEventListener('click', ()=>addChippedArea(b.dataset.type)));
 
@@ -5734,13 +5748,20 @@ function commitProfile(){
 }
 function deleteProfile(id){
   if(id==='std'){ toast("Can't delete the Standard profile.",'warn'); return; }
-  if(!confirm('Remove this profile?')) return;
-  state.profiles = state.profiles.filter(x=>x.id!==id);
-  saveStateToDb();
-  renderProfiles();
-  populateProfileDD();
-  if(qb.profileId===id) qb.profileId='std';
-  toast('Profile removed.');
+  confirmAction({
+    title: 'Remove pricing profile?',
+    message: 'Remove this profile?',
+    confirmLabel: 'Remove Profile',
+    warning: true,
+    onConfirm: function(){
+      state.profiles = state.profiles.filter(x=>x.id!==id);
+      saveStateToDb();
+      renderProfiles();
+      populateProfileDD();
+      if(qb.profileId===id) qb.profileId='std';
+      toast('Profile removed.');
+    }
+  });
 }
 
 /* ====================================================================
@@ -5801,13 +5822,23 @@ function renderTaskTypes(){
 }
 function promptAdd(kind){
   if(kind==='area'){
-    const n = prompt('New area type name?'); if(n && n.trim()){
-      const id='x_'+(Date.now()%10000); state.areaTypes.push({id,name:n.trim()}); state.pricing.productivity[id]=2000; saveStateToDb(); renderAreaTypes();
-    }
+    promptAction({
+      title: 'New area type',
+      message: 'Name for the new area type?',
+      confirmLabel: 'Add',
+      onConfirm: function(n){
+        if(n && n.trim()){ const id='x_'+(Date.now()%10000); state.areaTypes.push({id,name:n.trim()}); state.pricing.productivity[id]=2000; saveStateToDb(); renderAreaTypes(); }
+      }
+    });
   } else {
-    const n = prompt('New task name?'); if(n && n.trim()){
-      state.tasks.push({id:Date.now(),name:n.trim(),min:5}); saveStateToDb(); renderTaskTypes();
-    }
+    promptAction({
+      title: 'New task',
+      message: 'Name for the new task?',
+      confirmLabel: 'Add',
+      onConfirm: function(n){
+        if(n && n.trim()){ state.tasks.push({id:Date.now(),name:n.trim(),min:5}); saveStateToDb(); renderTaskTypes(); }
+      }
+    });
   }
 }
 function renderUsers(){
@@ -5895,6 +5926,107 @@ function lighten(hex){ if(hex[0]!=='#'||hex.length!==7) return '#f3e3d2'; const 
 
 function openModal(id){ document.getElementById(id).classList.add('show'); }
 function closeModal(id){ document.getElementById(id).classList.remove('show'); }
+
+// --- Reusable confirmation modal (replaces native confirm()) ---
+// Renders a CleanBid-styled .scrim/.modal. No native browser dialogs.
+// opts: { title, message, confirmLabel, warning, onConfirm }
+// Behavior: Escape cancels, backdrop click cancels, Cancel button cancels.
+// Enter does NOT trigger the destructive confirm (safe default). Focus lands
+// on Cancel. Listener + node are fully cleaned up on close.
+function confirmAction(opts){
+  opts = opts || {};
+  const title = opts.title || 'Are you sure?';
+  const message = opts.message || '';
+  const confirmLabel = opts.confirmLabel || 'Confirm';
+  const warning = !!opts.warning;
+  const onConfirm = typeof opts.onConfirm === 'function' ? opts.onConfirm : function(){};
+  const scrim = document.createElement('div');
+  scrim.className = 'scrim';
+  scrim.id = 'cbConfirmModal';
+  scrim.setAttribute('role','dialog');
+  scrim.setAttribute('aria-modal','true');
+  scrim.setAttribute('aria-label', title);
+  scrim.innerHTML =
+    '<div class="modal">' +
+      '<div class="m-head"><h3>'+esc(title)+'</h3><button class="x" data-cb="cancel" aria-label="Close">✕</button></div>' +
+      (message ? '<div class="m-body"><p style="margin:0;color:var(--text);line-height:1.55">'+esc(message)+'</p></div>' : '') +
+      '<div class="m-foot">' +
+        '<button class="btn btn-outline btn-sm" data-cb="cancel">Cancel</button>' +
+        '<button class="btn '+(warning?'btn-danger':'btn-accent')+' btn-sm" data-cb="confirm">'+esc(confirmLabel)+'</button>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(scrim);
+  let done = false;
+  function cleanup(){ if(done) return; done = true; document.removeEventListener('keydown', onKey, true); if(scrim.parentNode) scrim.remove(); }
+  function doCancel(){ cleanup(); }
+  function doConfirm(){ cleanup(); onConfirm(); }
+  scrim.addEventListener('click', function(e){
+    if(e.target === scrim){ doCancel(); return; }            // backdrop click cancels
+    const a = e.target && e.target.getAttribute ? e.target.getAttribute('data-cb') : null;
+    if(a === 'cancel') doCancel();
+    else if(a === 'confirm') doConfirm();
+  });
+  function onKey(e){
+    if(e.key === 'Escape'){ e.preventDefault(); doCancel(); }   // Escape cancels
+    else if(e.key === 'Enter'){ e.preventDefault(); /* never auto-confirm a destructive action */ }
+  }
+  document.addEventListener('keydown', onKey, true);
+  const cancelBtn = scrim.querySelector('[data-cb="cancel"]');
+  if(cancelBtn) cancelBtn.focus();
+  requestAnimationFrame(function(){ scrim.classList.add('show'); });
+  return scrim;
+}
+
+// --- Reusable input modal (replaces native prompt()) ---
+// opts: { title, message, defaultValue, confirmLabel, onConfirm }
+// onConfirm receives the raw input string. Escape/backdrop/Cancel cancel.
+// Enter submits the current input (natural for a text field).
+function promptAction(opts){
+  opts = opts || {};
+  const title = opts.title || 'Input required';
+  const message = opts.message || '';
+  const defaultValue = opts.defaultValue != null ? String(opts.defaultValue) : '';
+  const confirmLabel = opts.confirmLabel || 'OK';
+  const onConfirm = typeof opts.onConfirm === 'function' ? opts.onConfirm : function(){};
+  const scrim = document.createElement('div');
+  scrim.className = 'scrim';
+  scrim.id = 'cbPromptModal';
+  scrim.setAttribute('role','dialog');
+  scrim.setAttribute('aria-modal','true');
+  scrim.setAttribute('aria-label', title);
+  scrim.innerHTML =
+    '<div class="modal">' +
+      '<div class="m-head"><h3>'+esc(title)+'</h3><button class="x" data-cb="cancel" aria-label="Close">✕</button></div>' +
+      '<div class="m-body">' +
+        (message ? '<p style="margin:0 0 12px;color:var(--text);line-height:1.55">'+esc(message)+'</p>' : '') +
+        '<input id="cbPromptInput" class="input" type="text" value="'+esc(defaultValue)+'" style="width:100%">' +
+      '</div>' +
+      '<div class="m-foot">' +
+        '<button class="btn btn-outline btn-sm" data-cb="cancel">Cancel</button>' +
+        '<button class="btn btn-accent btn-sm" data-cb="confirm">'+esc(confirmLabel)+'</button>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(scrim);
+  const input = scrim.querySelector('#cbPromptInput');
+  let done = false;
+  function cleanup(){ if(done) return; done = true; document.removeEventListener('keydown', onKey, true); if(scrim.parentNode) scrim.remove(); }
+  function doCancel(){ cleanup(); }
+  function doConfirm(){ const val = input ? input.value : ''; cleanup(); onConfirm(val); }
+  scrim.addEventListener('click', function(e){
+    if(e.target === scrim){ doCancel(); return; }
+    const a = e.target && e.target.getAttribute ? e.target.getAttribute('data-cb') : null;
+    if(a === 'cancel') doCancel();
+    else if(a === 'confirm') doConfirm();
+  });
+  function onKey(e){
+    if(e.target === input && e.key === 'Enter'){ e.preventDefault(); doConfirm(); } // Enter submits input
+    else if(e.key === 'Escape'){ e.preventDefault(); doCancel(); }
+  }
+  document.addEventListener('keydown', onKey, true);
+  if(input) input.focus();
+  requestAnimationFrame(function(){ scrim.classList.add('show'); });
+  return scrim;
+}
 document.querySelectorAll('.scrim').forEach(o=>o.addEventListener('click', function(e){ if(e.target===o) o.classList.remove('show'); }));
 
 // Show a fatal (red) toast — caller passes a clear human message.
