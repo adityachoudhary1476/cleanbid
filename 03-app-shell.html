@@ -6222,20 +6222,65 @@ console.log('[CleanBid] ready v2');
       '</div>';
   };
 
+  // Single source of truth for which full-screen layer is visible.
+  // Guarantees the user ALWAYS sees exactly one of: landing | app | error,
+  // and NEVER a state where every layer is hidden (blank/cream screen).
+  window.setView = function (view) {
+    const layers = ['view-login', 'view-app', 'authError', 'workspaceOnboarding', 'workspacePicker'];
+    layers.forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.classList.add('hidden');
+    });
+    const target = document.getElementById(view);
+    if (target) target.classList.remove('hidden');
+    forceDismissAuthLoading();
+  };
+
+  // Fail-safe: if after boot neither the landing nor the app is visible,
+  // surface the public homepage so the user is never stranded on a cream
+  // background. Called after every bootstrap path resolves or throws.
+  function ensureVisibleFallback() {
+    const login = document.getElementById('view-login');
+    const app = document.getElementById('view-app');
+    const loginVisible = login && !login.classList.contains('hidden');
+    const appVisible = app && !app.classList.contains('hidden');
+    if (!loginVisible && !appVisible) {
+      console.warn('[CleanBid Boot] No view visible — falling back to public homepage');
+      if (login) login.classList.remove('hidden');
+    }
+  }
+
   async function initAuthFlow() {
-    // Show loading
-    document.getElementById('authLoading').classList.remove('hidden');
-    
+    console.log('[CleanBid Boot] 01_html_loaded');
+
+    // STEP 10: render the PUBLIC homepage IMMEDIATELY and independently of
+    // auth. The landing must show even if Supabase is down / auth fails.
+    const landing = document.getElementById('view-login');
+    if (landing) landing.classList.remove('hidden');
+    const appEl = document.getElementById('view-app');
+    if (appEl) appEl.classList.add('hidden');
+    console.log('[CleanBid Boot] 02_landing_rendered');
+
+    // authLoading is ONLY shown for the authenticated workspace-load step,
+    // never to gate the public homepage.
+    let authLoadingShown = false;
+    const showAuthLoading = () => {
+      if (authLoadingShown) return;
+      document.getElementById('authLoading').classList.remove('hidden');
+      authLoadingShown = true;
+      console.log('[CleanBid Boot] 03_auth_loading_shown');
+    };
+
     try {
-      // Initialize modules
+      console.log('[CleanBid Boot] 04_bootstrap_start');
       await window.__cleanbid_bootstrap();
-      
-      // Check auth state
+      console.log('[CleanBid Boot] 05_bootstrap_done');
+
       const user = window.__cleanbid_auth.getCurrentUser();
       const session = window.__cleanbid_auth.getSession();
-      
+      console.log('[CleanBid Boot] 06_auth_state', session ? 'authenticated' : 'anonymous');
+
       if (user && session) {
-        // User is authenticated
         window.__cleanbid_is_authenticated = true;
 
         // F1: accept a pending invitation from ?invite=<token> (must happen
@@ -6254,35 +6299,43 @@ console.log('[CleanBid] ready v2');
           }
         }
 
-        // Get workspaces
+        showAuthLoading();
+        console.log('[CleanBid Boot] 07_get_workspaces');
         const workspaces = await window.__cleanbid_workspace.getWorkspaces();
-        
+        console.log('[CleanBid Boot] 08_workspaces', workspaces.length);
+
         if (workspaces.length === 0) {
-          // New user - show workspace onboarding
-          document.getElementById('authLoading').classList.add('hidden');
+          forceDismissAuthLoading();
+          console.log('[CleanBid Boot] 09_onboarding');
           window.showWorkspaceOnboarding();
         } else if (workspaces.length === 1) {
-          // Single workspace - auto-select
           window.__cleanbid_current_workspace = workspaces[0];
           if (window.__cleanbid_db && window.__cleanbid_db.setCurrentWorkspaceId) {
             window.__cleanbid_db.setCurrentWorkspaceId(workspaces[0].id);
           }
           state.workspaceId = workspaces[0].id;
-          document.getElementById('authLoading').classList.add('hidden');
+          forceDismissAuthLoading();
+          console.log('[CleanBid Boot] 10_enter_app');
           await enterApp(false);
         } else {
-          // Multiple workspaces - let user choose
-          document.getElementById('authLoading').classList.add('hidden');
+          forceDismissAuthLoading();
+          console.log('[CleanBid Boot] 10_workspace_picker');
           window.showWorkspacePicker(workspaces);
         }
       } else {
-        // Not authenticated - show landing page
-        document.getElementById('authLoading').classList.add('hidden');
+        // Anonymous: public homepage already rendered above.
+        forceDismissAuthLoading();
+        console.log('[CleanBid Boot] 09_anonymous_landing_shown');
       }
     } catch (error) {
-      console.error('[CleanBid] Auth flow error:', error);
-      document.getElementById('authLoading').classList.add('hidden');
-      window.showAuthError(error && error.message ? error.message : 'Authentication flow failed');
+      console.error('[CleanBid Boot ERROR] auth flow', error && error.message, error && error.stack);
+      forceDismissAuthLoading();
+      // Surface the real error (dev shows details; prod shows generic + Retry).
+      const dev = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+      window.showAuthError(dev && error ? error.message : (error && error.message ? 'Authentication flow failed' : 'Authentication flow failed'));
+    } finally {
+      ensureVisibleFallback();
+      console.log('[CleanBid Boot] 11_done');
     }
   }
 })();
