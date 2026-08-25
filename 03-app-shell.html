@@ -6266,44 +6266,12 @@ console.log('[CleanBid] ready v2');
 </script>
 
 <script type="module">
-  // NOTE: a top-level `import` failure (e.g. Brave blocking a module/chunk,
-  // or a transient CDN error) would otherwise leave the full-screen
-  // #authLoading overlay stuck forever. We register a window error handler
-  // BEFORE the imports run and force-dismiss the overlay on any failure.
-  function __dismissAuthLoading() {
-    const el = document.getElementById('authLoading');
-    if (el) el.classList.add('hidden');
-  }
-  window.addEventListener('error', function (e) {
-    if (e && e.message && /authLoading|module|import|fetch|supabase/i.test(e.message)) {
-      console.warn('[CleanBid] Unhandled error during boot — dismissing loading overlay:', e.message);
-      __dismissAuthLoading();
-    }
-  });
-
-  let mods;
-  try {
-    mods = await Promise.all([
-      import('./src/auth.js'),
-      import('./src/db.js'),
-      import('./src/workspace.js'),
-      import('./src/main.js'),
-      import('./src/state.js').then(m => ({ StateApi: m })),
-      import('./src/backup.js').then(m => ({ backup: m })),
-    ]);
-  } catch (err) {
-    console.error('[CleanBid] Module import failed — showing landing page:', err);
-    __dismissAuthLoading();
-    throw err; // surface in console; landing page remains visible
-  }
-
-  const [authMod, dbMod, wsMod, mainMod, stateMod, backupMod] = mods;
-  const { initAuth, signUp, signIn, signOut, getCurrentUser, getSession, inviteTeamMember, acceptInvitation } = authMod;
-  const { initDb, saveState, loadState, loadDemoState, saveDemoState, setCurrentWorkspaceId, getDbMode, flushSave, restoreStateToSupabase } = dbMod;
-  const { initWorkspace, getWorkspaces, createNewWorkspace } = wsMod;
-  const { bootstrap } = mainMod;
-  const StateApi = stateMod.StateApi;
-  const backup = backupMod.backup;
+  import { initAuth, signUp, signIn, signOut, getCurrentUser, getSession, inviteTeamMember, acceptInvitation } from './src/auth.js';
+  import { initDb, saveState, loadState, loadDemoState, saveDemoState, setCurrentWorkspaceId, getDbMode, flushSave, restoreStateToSupabase } from './src/db.js';
+  import { initWorkspace, getWorkspaces, createNewWorkspace } from './src/workspace.js';
+  import { bootstrap } from './src/main.js';
+  import * as StateApi from './src/state.js';
+  import { buildBackup, validateBackup, applyBackup, summarizeState } from './src/backup.js';
 
   window.__cleanbid_auth = { initAuth, signUp, signIn, signOut, getCurrentUser, getSession, inviteTeamMember, acceptInvitation };
   window.__cleanbid_db = { initDb, saveState, loadState, loadDemoState, saveDemoState, setCurrentWorkspaceId, getDbMode, flushSave, restoreStateToCloud: restoreStateToSupabase };
@@ -6311,12 +6279,34 @@ console.log('[CleanBid] ready v2');
   window.__cleanbid_bootstrap = bootstrap;
   // Canonical workspace state-boundary helpers (used by loadStateFromDb).
   window.__cleanbid_stateapi = StateApi;
-  window.__cleanbid_backupapi = { buildBackup: backup.buildBackup, validateBackup: backup.validateBackup, applyBackup: backup.applyBackup, summarizeState: backup.summarizeState };
+  window.__cleanbid_backupapi = { buildBackup, validateBackup, applyBackup, summarizeState };
 
   // Trigger auth flow now that modules are registered
   if (window.__cleanbid_initAuthFlow) {
     window.__cleanbid_initAuthFlow();
   }
+</script>
+
+<!-- Safety net: if the module script above fails to load/parse (Brave
+     blocking a chunk, CDN hiccup), the full-screen #authLoading overlay
+     would otherwise stay up forever. A module load failure fires a global
+     'error' event, which this classic script catches to unblock the UI. -->
+<script>
+  (function () {
+    function dismiss() {
+      var el = document.getElementById('authLoading');
+      if (el) el.classList.add('hidden');
+    }
+    window.addEventListener('error', function (e) {
+      // Module/import/fetch failures surface here without a specific target.
+      if (!e || !e.target || (e.target && e.target.tagName === 'SCRIPT')) {
+        console.warn('[CleanBid] Boot error captured — dismissing loading overlay.');
+        dismiss();
+      }
+    }, true);
+    // Hard cap: never keep the overlay visible longer than 8s no matter what.
+    setTimeout(dismiss, 8000);
+  })();
 </script>
 
 <!-- Landing v2: mobile nav toggles (canonical window.* defs for check-handlers) -->

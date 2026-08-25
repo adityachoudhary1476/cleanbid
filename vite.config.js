@@ -1,5 +1,5 @@
 import { defineConfig } from 'vite';
-import { copyFileSync } from 'node:fs';
+import { copyFileSync, existsSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 /**
@@ -13,14 +13,27 @@ function emitRootIndex() {
   return {
     name: 'emit-root-index',
     apply: 'build',
-    closeBundle() {
-      const built = resolve(process.cwd(), 'dist', '03-app-shell.html');
-      try {
-        copyFileSync(built, resolve(process.cwd(), 'dist', 'index.html'));
-        console.log('[emit-root-index] dist/index.html written from built shell');
-      } catch (err) {
-        throw new Error(`[emit-root-index] Failed to write dist/index.html: ${err.message}`);
+    // Vite 6: `closeBundle` can fire before the HTML asset is flushed to
+    // disk (and `emptyOutDir` runs around the same time), so the copied
+    // source is occasionally missing and the deploy build fails. Use
+    // `writeBundle`, which runs AFTER all assets are written to dist.
+    writeBundle() {
+      const src = resolve(process.cwd(), 'dist', '03-app-shell.html');
+      const dst = resolve(process.cwd(), 'dist', 'index.html');
+      if (!existsSync(src)) {
+        // Fallback: the entry HTML may have been emitted under a hashed or
+        // transformed name. Find any *.html that references the app shell.
+        const dir = resolve(process.cwd(), 'dist');
+        const candidates = readdirSync(dir).filter((f) => f.endsWith('.html'));
+        if (candidates.length === 1 && candidates[0] !== 'index.html') {
+          copyFileSync(resolve(dir, candidates[0]), dst);
+          console.log('[emit-root-index] dist/index.html written from', candidates[0]);
+          return;
+        }
+        throw new Error('[emit-root-index] could not locate built shell (dist/03-app-shell.html missing)');
       }
+      copyFileSync(src, dst);
+      console.log('[emit-root-index] dist/index.html written from built shell');
     },
   };
 }
