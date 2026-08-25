@@ -1,3 +1,7 @@
+-- ====================================================================
+-- SUPERSEDED — DO NOT RUN
+-- Authoritative schema: supabase-schema.sql
+-- ====================================================================
 -- Recreate is_workspace_member as STABLE SECURITY DEFINER
 -- owned by postgres, using (SELECT auth.uid()) init-plan form
 -- so it bypasses RLS and kills the infinite recursion loop.

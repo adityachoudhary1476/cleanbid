@@ -2454,7 +2454,7 @@ Demo City, USA</textarea></div>
       <div class="field"><label class="label">Recipient email</label><input class="input" id="emailTo"></div>
       <div class="field"><label class="label">Subject</label><input class="input" id="emailSubject"></div>
       <div class="field"><label class="label">Message</label><textarea class="ta" id="emailBody" rows="6"></textarea></div>
-      <p class="hint">A PDF will be auto-attached. (Demo mode — routes to your outbox, not a real SMTP server.)</p>
+      <p class="hint">A branded PDF proposal is generated from this quote and attached. Sent from your verified workspace email via our provider.</p>
     </div>
     <div class="m-foot">
       <button class="btn btn-outline btn-sm" onclick="closeModal('emailModal')">Cancel</button>
@@ -5350,7 +5350,6 @@ function commitEmail(){
 
   const session = (window.__cleanbid_auth && window.__cleanbid_auth.getSession && window.__cleanbid_auth.getSession()) || null;
   const authToken = session && session.access_token ? session.access_token : null;
-  const isCloud = window.__cleanbid_auth && window.isCloud && window.__cleanbid_auth && window.__cleanbid_auth.getSession;
   const cloudMode = !!(window.__cleanbid_user && session);
 
   // ---- Demo / local mode: no server exists, so no real email can be sent. ----
@@ -5385,7 +5384,7 @@ function commitEmail(){
       const statusLabel = (data.status==='delivered') ? 'delivered' : 'sent';
       state.activity.unshift({avt:(window.__cleanbid_user&&window.__cleanbid_user.full_name||'You').slice(0,2).toUpperCase(), actor:(window.__cleanbid_user&&window.__cleanbid_user.full_name)||'You', what:'sent proposal to '+to, object:q.propertyName, time:'just now', meta:{ status:statusLabel, providerId:data.providerId||null }});
       saveStateToDb();
-      renderQuotes(); renderDash(); renderActivity();
+      renderQuotes(); renderDash();
       closeModal('emailModal');
       toast(data.message||'Proposal sent.','success');
     } else {
@@ -5815,9 +5814,9 @@ function commitInvite(){
   window.__cleanbid_auth.inviteTeamMember(ws.id, email, role)
     .then(({ token }) => {
       // Token is the raw invite link; in production this is emailed.
+      // Canonical invitation state lives in workspace_invitations (DB),
+      // NOT in local state — we only surface the link for manual copy.
       const link = location.origin + location.pathname + '?invite=' + encodeURIComponent(token);
-      state.users.push({ id: 'inv-' + Date.now(), name, email, role, lastActive: 'Invited', inviteLink: link });
-      saveStateToDb(); renderUsers();
       closeModal('inviteModal');
       toast('Invitation created. Share the invite link with ' + email + '.', 'success');
       // Surface the link so it can be copied manually.

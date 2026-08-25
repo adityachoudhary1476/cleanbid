@@ -1,4 +1,7 @@
 -- ====================================================================
+-- SUPERSEDED — DO NOT RUN
+-- Authoritative schema: supabase-schema.sql
+-- ====================================================================
 -- CLEANBID — ATOMIC WORKSPACE RESTORE (audit fix P0-1)
 -- ====================================================================
 -- Deploy via Supabase SQL Editor (service role / postgres connection).

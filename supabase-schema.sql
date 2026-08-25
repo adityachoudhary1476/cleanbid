@@ -192,6 +192,34 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_invitations_active
   WHERE accepted_at IS NULL;
 
 -- ====================================================================
+-- 2b) MIGRATION SAFETY — additive columns + backfills for existing
+--     production DBs (so this single file is safe for BOTH fresh and
+--     existing projects; all statements are idempotent).
+-- ====================================================================
+ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS created_by UUID DEFAULT auth.uid();
+ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS addons JSONB NOT NULL DEFAULT '[]';
+ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS tasks JSONB NOT NULL DEFAULT '[]';
+ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS area_types JSONB NOT NULL DEFAULT '[]';
+
+-- Backfill created_by for any workspace that predates v2 (first owner row).
+UPDATE workspaces w
+SET created_by = sub.user_id
+FROM (
+  SELECT DISTINCT ON (workspace_id) workspace_id, user_id
+  FROM workspace_members
+  ORDER BY workspace_id, created_at ASC
+) sub
+WHERE w.id = sub.workspace_id AND w.created_by IS NULL;
+
+-- Backfill public.users from auth.users (the trigger only covers NEW signups;
+-- pre-trigger accounts would otherwise break invite-accept email lookup).
+INSERT INTO public.users (id, email, full_name)
+SELECT u.id, u.email,
+       COALESCE(u.raw_user_meta_data ->> 'full_name', split_part(u.email, '@', 1))
+FROM auth.users u
+ON CONFLICT (id) DO NOTHING;
+
+-- ====================================================================
 -- 2) INDEXES (entity tables)
 -- ====================================================================
 CREATE INDEX IF NOT EXISTS idx_customers_workspace ON customers(workspace_id);
@@ -418,6 +446,7 @@ DECLARE
   v_caller_role TEXT;
   v_token TEXT;
   v_hash  TEXT;
+  v_existing_id UUID;
 BEGIN
   IF (SELECT auth.uid()) IS NULL THEN
     RAISE EXCEPTION 'authentication required';
@@ -447,7 +476,6 @@ BEGIN
 
   -- Reuse an existing active invitation by re-issuing a fresh token for it
   -- (the raw token is never persisted, so we cannot return the old one).
-  DECLARE v_existing_id UUID;
   SELECT id INTO v_existing_id FROM workspace_invitations
    WHERE workspace_id = p_workspace AND lower(invited_email) = lower(p_email) AND accepted_at IS NULL
    LIMIT 1;

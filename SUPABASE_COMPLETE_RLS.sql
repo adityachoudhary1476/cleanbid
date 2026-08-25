@@ -1,4 +1,7 @@
 -- ====================================================================
+-- SUPERSEDED — DO NOT RUN
+-- Authoritative schema: supabase-schema.sql
+-- ====================================================================
 -- CLEANBID RLS v2 — fixes workspace creation (INSERT ... RETURNING)
 -- Run the WHOLE file in Supabase Dashboard → SQL Editor
 -- Project: jydwyzhmlsbckxwshplf
