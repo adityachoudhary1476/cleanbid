@@ -31,14 +31,14 @@ export async function initAuth() {
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
         currentSession = session;
-        await fetchUserProfile(session.user);
+        await fetchUserProfile();
       }
 
       // Listen for auth changes (sign in / sign out / token refresh).
       supabase.auth.onAuthStateChange(async (event, session) => {
         currentSession = session;
         if (event === 'SIGNED_IN' && session) {
-          await fetchUserProfile(session.user);
+          await fetchUserProfile();
         } else if (event === 'SIGNED_OUT') {
           currentSession = null;
           window.__cleanbid_user = null;
@@ -96,10 +96,13 @@ export async function signUp(email, password, fullName) {
 
   if (error) throw error;
 
-  // When email confirmation is required, Supabase returns no session.
+  // Authoritative session for this client (only present when email
+  // confirmation is off). Set it so getUserWorkspaces()/loadState can
+  // resolve a workspace after sign-up too.
   const emailConfirmationRequired = !data.session;
+  currentSession = data.session || null;
   if (!emailConfirmationRequired && data.user) {
-    await fetchUserProfile(data.user);
+    await fetchUserProfile();
   }
 
   return { user: data.user, session: data.session, emailConfirmationRequired };
@@ -114,7 +117,13 @@ export async function signIn(email, password) {
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) throw error;
 
-  await fetchUserProfile(data.user);
+  // Authoritative session for this client — required by getUserWorkspaces()
+  // (RLS-scoped workspace reads) and loadStateFromSupabase() which both
+  // early-return when currentSession is null. Without this, a freshly
+  // signed-in user never resolves a workspace and the app stays on the
+  // loading/onboarding overlay (cream screen).
+  currentSession = data.session;
+  await fetchUserProfile();
   return { user: data.user, session: data.session };
 }
 
@@ -130,25 +139,43 @@ export async function signOut() {
  * Fetch or create the application-level user profile from the auth user.
  * We never duplicate auth credentials — only mirror id/email/name into the
  * `users` table for display and membership purposes.
+ *
+ * IMPORTANT (production login fix): the profile row's `id` MUST equal the
+ * authenticated Supabase user's UUID = auth.uid(). We obtain that id from
+ * supabase.auth.getUser(), which (a) returns the authoritative user and
+ * (b) forces a token validation/refresh. This prevents a 42501 RLS failure
+ * that occurred when the upsert was fired from a stale/restored session
+ * whose access token had not yet been re-attached — in that case auth.uid()
+ * evaluated to NULL and `id = auth.uid()` failed the INSERT policy.
  */
-async function fetchUserProfile(authUser) {
+async function fetchUserProfile() {
+  if (!supabase) return;
+
+  // Authoritative user (triggers refresh of an expired access token).
+  const { data: authData, error: authErr } = await supabase.auth.getUser();
+  if (authErr || !authData?.user) {
+    console.error('[CleanBid Auth] Could not resolve authenticated user:', authErr);
+    return;
+  }
+  const authUser = authData.user;
+
   const user = {
-    id: authUser.id,
-    email: authUser.email,
+    id: authUser.id,                       // === auth.users.id === auth.uid()
+    email: authUser.email,                 // preserved from auth.users.email
     full_name: authUser.user_metadata?.full_name || authUser.email?.split('@')[0],
     avatar_url: authUser.user_metadata?.avatar_url,
   };
 
   window.__cleanbid_user = user;
 
-  if (isCloudMode && supabase) {
-    const { error } = await supabase.from('users').upsert({
-      id: user.id,
-      email: user.email,
-      full_name: user.full_name,
-    });
-    if (error) console.error('[CleanBid Auth] Failed to upsert user profile:', error);
-  }
+  // Mirror into public.users. id is always the real auth UUID, so it
+  // satisfies the INSERT/UPDATE RLS policy `id = auth.uid()`.
+  const { error } = await supabase.from('users').upsert({
+    id: user.id,
+    email: user.email,
+    full_name: user.full_name,
+  });
+  if (error) console.error('[CleanBid Auth] Failed to upsert user profile:', error);
 }
 
 /** Get the current application user (or null). */
