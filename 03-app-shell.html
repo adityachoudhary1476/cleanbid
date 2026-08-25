@@ -88,6 +88,8 @@ img{display:block;max-width:100%}
 .shell{display:grid;grid-template-columns:260px 1fr;min-height:100vh}
 .sidebar{background:var(--ink-deep);color:#dccfb0;padding:26px 0;position:sticky;top:0;height:100vh;overflow-y:auto;display:flex;flex-direction:column;border-right:1px solid rgba(255,255,255,.05)}
 .brand{padding:0 22px 26px;border-bottom:1px solid rgba(255,255,255,.06)}
+.brand-logo{display:flex;align-items:center;margin-bottom:14px}
+.brand-logo img{height:30px;width:auto;max-width:100%;object-fit:contain;display:block}
 .brand-row{display:flex;align-items:center;gap:10px;margin-bottom:6px}
 .brand-row .mark{width:32px;height:32px;border-radius:50%;background:var(--ink);border:2px solid var(--accent);color:var(--accent);display:grid;place-items:center;font-family:'Fraunces',serif;font-style:italic;font-weight:600;font-size:14px}
 .brand-row .word{font-family:'Fraunces',serif;font-style:italic;font-weight:500;font-size:24px;color:#fff;letter-spacing:-1px;line-height:1}
@@ -1521,6 +1523,9 @@ tbody tr:hover{background:var(--paper-3)}
   <!-- SIDEBAR -->
   <nav class="sidebar" id="sidebar">
     <div class="brand">
+      <div class="brand-logo">
+        <img src="/logo.png" alt="CleanBid" />
+      </div>
       <div class="brand-row">
         <div class="mark" id="brandMark">S</div>
         <div class="word" id="brandName">Summit</div>
