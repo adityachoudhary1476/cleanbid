@@ -22,6 +22,13 @@ const DEMO_STORAGE_KEY = 'cleanbid_demo_v3';
 let dbMode = null; // 'local' | 'supabase' | null (uninitialized)
 let currentWorkspaceId = null;
 let saveTimeout = null;
+// Trackable, awaitable persistence. `savePromise` represents the currently
+// scheduled OR in-flight Supabase write; callers can await it (via saveState
+// or flushSave) and know the network upsert has actually completed.
+let savePromise = null;
+// Always points at the most recent state handed to saveState(). The flush
+// writes THIS, so a newer save can never be clobbered by an older one.
+let pendingState = null;
 
 /**
  * Local storage is namespaced per workspace so that a switch never reads
@@ -36,6 +43,12 @@ function localStoreKey() {
  * Initialize the database layer.
  */
 export async function initDb() {
+  // Reset debounce/awaitable-save state so a (re)initialization never
+  // inherits a stale in-flight write or pending timer from a previous
+  // workspace/session.
+  savePromise = null;
+  saveTimeout = null;
+  pendingState = null;
   if (dbMode !== null) return dbMode;
 
   if (isCloud() && supabase) {
@@ -119,30 +132,84 @@ async function fetchAllActivity(workspaceId) {
 }
 
 /**
- * Save state to the appropriate backend. In Supabase mode, saves are debounced.
+ * Save state to the appropriate backend.
+ *
+ * In Supabase mode the actual network write is DEBOUNCED by 100ms to avoid
+ * excessive API calls, but the returned promise only resolves AFTER the real
+ * Supabase upsert has completed — so callers can `await saveState(state)` and
+ * be certain the data is persisted (not merely queued).
+ *
+ * Coalescing / last-write-wins: every call updates `pendingState` to the
+ * latest state. A single in-flight write picks up `pendingState` at flush
+ * time and loops until no newer state has arrived, so an older state can
+ * never overwrite a newer one and there is exactly one final write.
  */
 export async function saveState(state) {
+  pendingState = state;
   window.__cleanbid_state = state;
   if (dbMode === 'supabase') {
-    if (saveTimeout) clearTimeout(saveTimeout);
-    saveTimeout = setTimeout(() => {
-      saveStateToSupabase(state);
-      saveTimeout = null;
-    }, 100);
+    // If a write is already scheduled or in flight, just return that promise.
+    // It will persist the (now latest) pendingState. No second timer, no
+    // second write.
+    if (savePromise) return savePromise;
+    return startWrite();
   } else {
     saveStateToLocal(state);
+    return Promise.resolve();
   }
 }
 
-/** Immediately flush any pending saves. */
+// Begin a debounced, awaitable write. Exactly one savePromise exists at a time.
+function startWrite() {
+  if (saveTimeout) clearTimeout(saveTimeout);
+  savePromise = new Promise((resolve, reject) => {
+    saveTimeout = setTimeout(async () => {
+      saveTimeout = null;
+      try {
+        // Loop until the state has stopped changing during the write, so the
+        // FINAL pendingState is always what lands in Supabase.
+        let wrote = null;
+        while (pendingState !== wrote) {
+          wrote = pendingState;
+          await saveStateToSupabase(wrote);
+        }
+        savePromise = null;
+        resolve();
+      } catch (e) {
+        savePromise = null;
+        reject(e);
+      }
+    }, 100);
+  });
+  return savePromise;
+}
+
+/**
+ * Immediately flush any pending saves and await the actual Supabase write.
+ * Used by explicit save actions and by logout before tearing down state.
+ */
 export async function flushSave() {
+  // A debounce timer is pending but no write has started yet -> run now.
   if (saveTimeout) {
     clearTimeout(saveTimeout);
     saveTimeout = null;
-    const state = window.__cleanbid_state;
-    if (state && dbMode === 'supabase') {
-      await saveStateToSupabase(state);
+    if (dbMode === 'supabase' && pendingState) {
+      try {
+        let wrote = null;
+        while (pendingState !== wrote) {
+          wrote = pendingState;
+          await saveStateToSupabase(wrote);
+        }
+      } catch (e) {
+        throw e;
+      }
     }
+    savePromise = null;
+    return;
+  }
+  // A write is in flight -> wait for it (it already writes the latest state).
+  if (savePromise) {
+    try { await savePromise; } catch (_) { /* already logged by saveStateToSupabase */ }
   }
 }
 

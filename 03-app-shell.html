@@ -2883,13 +2883,18 @@ async function saveStateToDb(){
   }
   if(window.__cleanbid_db && window.__cleanbid_db.saveState){
     try {
+      // await the REAL Supabase upsert (db.saveState now resolves only after
+      // the network write completes). Re-throw so callers can react to failure.
       await window.__cleanbid_db.saveState(state);
     } catch(e){
-      console.error('[CleanBid] Failed to save state to DB:', e);
       const dbMode = window.__cleanbid_db.getDbMode ? window.__cleanbid_db.getDbMode() : null;
       if (dbMode !== 'supabase') {
-        saveState();
+        // Non-cloud fallback: try local persistence, then surface the error.
+        try { saveState(); } catch (_) {}
       }
+      // Propagate so saveDraft()/generateProposal() can show a real error
+      // instead of a false "Draft saved".
+      throw e;
     }
   } else {
     saveState();
@@ -4660,10 +4665,9 @@ function findOrCreateProperty(customerId, name, address, type, sqft, floors){
   return p;
 }
 
-function saveDraft(){
+async function saveDraft(){
   const sqft = parseFloat(document.getElementById('qbSqft').value)||0;
   if(!sqft){ toast('Enter total square footage first.','warn'); return; }
-  markClean();
   const customerId = +document.getElementById('qbCustomer').value || null;
   const cust = state.customers.find(c=>c.id===customerId);
   const propName = document.getElementById('qbPropName').value||'Untitled Property';
@@ -4735,7 +4739,18 @@ function saveDraft(){
   state.quotes.unshift(q);
   if(!_builderQuoteId){ _builderQuoteId = q.id; window.__pendingWhyOverrides = {}; }
   state.activity.unshift({avt:'JD',actor:'Jane',what:'saved draft of',object:q.propertyName,time:'just now'});
-  saveStateToDb();
+  try {
+    // Await the REAL persistence (db saveState resolves only after the
+    // Supabase upsert completes). "Draft saved" now means it's actually stored.
+    await saveStateToDb();
+  } catch (e) {
+    // Persistence failed. Keep the in-memory quote so the user's work is not
+    // silently destroyed; surface a clear error instead of a false success.
+    console.error('[CleanBid] Draft save failed:', e);
+    toast('Could not save the draft — your work is still on screen, please try saving again.', 'error', 8000);
+    return;
+  }
+  markClean();
   renderQuotes();
   renderDash();
   toast('Draft saved.');
@@ -4803,8 +4818,8 @@ function commitRebud(){
 }
 
 /* Version / revise */
-function commitRevise(){
-  saveDraft();
+async function commitRevise(){
+  await saveDraft();
   // capture the just-saved and the prior
   const newQ = state.quotes[0];
   if(!newQ) return;
@@ -4875,7 +4890,7 @@ function commitRevise(){
   } else {
     toast('No matching prior quote found — saved as new quote.');
   }
-  saveStateToDb();
+  await saveStateToDb();
   renderQuotes();
   renderDash();
 }
@@ -5070,10 +5085,12 @@ function closeDrawer(id){ document.getElementById(id).classList.remove('show'); 
 /* ====================================================================
    PROPOSAL — G/B/B matrix + economics block + Why link
 ==================================================================== */
-function generateProposal(){
+async function generateProposal(){
   const sqft = parseFloat(document.getElementById('qbSqft').value)||0;
   if(!sqft){ toast('Add building details first.','warn'); return; }
-  saveDraft();
+  // Await the draft save so the quote is actually persisted in Supabase
+  // BEFORE we navigate away to the proposal view.
+  await saveDraft();
   // P0-3: a generated proposal is review-ready, not a raw draft.
   const q = state.quotes[0];
   if(q && q.status==='draft'){ q.status='ready'; saveStateToDb(); renderQuotes(); renderDash(); }
