@@ -1161,7 +1161,7 @@ tbody tr:hover{background:var(--paper-3)}
     </div>
     <div class="mock-wrap">
       <div class="mock" role="img" aria-label="Preview of the CleanBid quote builder: site survey on the left, live price calculation on the right">
-        <div class="mock-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="url">app.getcleanbid.app — New Quote</span></div>
+        <div class="mock-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="url">CleanBid — New Quote</span></div>
         <div class="mock-body">
           <aside class="mock-side" aria-hidden="true">
             <div class="ms-brand"><span class="m">S</span><span class="w">Summit</span></div>
@@ -5162,11 +5162,11 @@ function renderProposal(q, viewVer){
     <div class="p-shell">
       <div class="p-cover">
         <div class="pb-logo"><div class="pbm">${esc(org.initial)}</div><div class="pbn">${esc(org.name)}</div></div>
-        <div class="pdpmeta">Prepared for ${esc(q.companyName||'—')}${q.workspaceId ? '<br><small>Workspace: '+esc(q.workspaceId)+'</small>' : ''}</div>
+        <div class="pdpmeta">Prepared for ${esc(q.companyName||'—')}</div>
         <h1>Commercial Cleaning<br>Proposal</h1>
         <div class="pd-prop">${esc(q.propertyName)}</div>
         <div class="pd-foot">
-          <div><b>Proposal</b><br>${esc(q.id)} · ${esc(disp.versionLabel)}${q.workspaceId ? '<br><small>Workspace: '+esc(q.workspaceId)+'</small>' : ''}</div>
+          <div><b>Proposal</b><br>${esc(q.id)} · ${esc(disp.versionLabel)}</div>
           <div><b>Profile</b><br>${esc(q.profileName||'Standard')}</div>
           <div><b>Date</b><br>${esc(q.date||'Today')}</div>
         </div>
@@ -6128,7 +6128,7 @@ console.log('[CleanBid] ready v2');
         window.showWorkspacePicker(workspaces);
       }
     } catch (error) {
-      toast(error.message || 'Sign in failed', 'warn');
+      window.showAuthError(error && error.message ? error.message : 'Sign in failed');
     }
   };
 
@@ -6199,6 +6199,29 @@ console.log('[CleanBid] ready v2');
   // Hard timeout: never keep the overlay up longer than 8s.
   setTimeout(forceDismissAuthLoading, 8000);
 
+  // STEP 5 safety net: if initialization throws, surface the REAL error
+  // instead of leaving the user on a silent cream screen. The underlying
+  // error is shown (not hidden) so the failure is diagnosable.
+  window.showAuthError = function (message) {
+    forceDismissAuthLoading();
+    let el = document.getElementById('authError');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'authError';
+      el.style.cssText = 'position:fixed;inset:0;z-index:200;display:flex;align-items:center;justify-content:center;background:var(--paper);padding:24px';
+      document.body.appendChild(el);
+    }
+    el.classList.remove('hidden');
+    el.innerHTML =
+      '<div style="max-width:520px;text-align:center;background:var(--paper-2);border:1px solid var(--line);border-radius:14px;padding:32px;box-shadow:var(--shadow-3)">' +
+        '<div style="font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--bad)">CleanBid couldn’t finish loading</div>' +
+        '<p style="margin:14px 0;color:var(--text);font-size:14px;word-break:break-word">' +
+          (message ? String(message).replace(/</g, '&lt;') : 'An unexpected error occurred during startup.') +
+        '</p>' +
+        '<button class="btn btn-accent" onclick="location.reload()" style="padding:10px 22px">Retry</button>' +
+      '</div>';
+  };
+
   async function initAuthFlow() {
     // Show loading
     document.getElementById('authLoading').classList.remove('hidden');
@@ -6259,7 +6282,7 @@ console.log('[CleanBid] ready v2');
     } catch (error) {
       console.error('[CleanBid] Auth flow error:', error);
       document.getElementById('authLoading').classList.add('hidden');
-      // Show landing page on error
+      window.showAuthError(error && error.message ? error.message : 'Authentication flow failed');
     }
   }
 })();
