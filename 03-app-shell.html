@@ -2701,174 +2701,6 @@ Demo City, USA</textarea></div>
 <div class="toasts" id="toastWrap"></div>
 
 <script>
-/* ====================================================================
-   CLEANBID — Commercial Cleaning Estimator Pricing Engine
-   Pure function. No DOM. No globals. No side-effects.
-   Designed to be unit-testable in plain Node (zero deps).
-   ==================================================================== */
-
-// Public constants — exposed so the test file can reference them directly.
-const CLEANBIRD_CONSTANTS = {
-  MAX_HOURS_PER_CLEANER_PER_VISIT: 2.5, // how many visit-hours a single cleaner can log
-  WEEKS_PER_MONTH_APPROX: 4.33,        // 52 / 12 — used to convert visits per week → visits per month
-  HOURS_PER_TASK_MINUTE_SLOT: 1 / 60,  // minutes → hours
-  MIN_PRICE_FLOOR_DEFAULT: 800,
-  PACKAGE_MULT: { essential: 0.92, professional: 1.0, premium: 1.10 },
-  PACKAGE_MARGIN_OFFSET: { essential: -4, professional: 0, premium: 6 },
-  MARGIN_FLOOR: 15,                      // never let adjusted margin drop below this
-  MARGIN_CEILING: 45,                    // never let it rise above this
-};
-
-/* ---------------------------------------------------------------------
-   determineAreasForQuote(input)
-   Builds the area list the engine should iterate over. The first path
-   (areas[] from the survey) is preferred; the fallback is one implicit
-   "whole building" area using the building type's productivity default.
-   --------------------------------------------------------------------- */
-function buildAreaList(input) {
-  const { totalArea, areas, profile } = input;
-  const fallbackProductivity =
-    (profile.productivity && profile.productivity[input.buildingType || 'office']) ||
-    (profile.productivity && profile.productivity.office) ||
-    2800;
-
-  if (Array.isArray(areas) && areas.length > 0) {
-    return areas.map(a => ({
-      sqft: Number(a.sqft) || 0,
-      type: a.type || 'office',
-      freq: Number(a.freq) || 1,
-      minTask: Number(a.minTask) || 0,
-      productivity: (profile.productivity && profile.productivity[a.type]) || fallbackProductivity
-    }));
-  }
-  // Single-implicit-area fallback. Production-only field is sqft.
-  return [{
-    sqft: Number(totalArea) || 0,
-    type: input.buildingType || 'office',
-    freq: Number(input.baseFrequency) || 1,
-    minTask: 0,
-    productivity: fallbackProductivity
-  }];
-}
-
-/* ---------------------------------------------------------------------
-   computeAddonCost(addons, totalArea, monthlyVisits, visitCrewHours)
-   Returns $/visit impact of every enabled add-on, respecting the 4
-   pricing methods (visit, sqft, hour, fixed-monthly-as-rate-per-visit).
-   --------------------------------------------------------------------- */
-function computeAddonCost(addons, totalArea, monthlyVisits, visitCrewHours) {
-  let perVisit = 0;
-  const safe = Array.isArray(addons) ? addons : [];
-  for (const a of safe) {
-    if (!a || !a.enabled) continue;
-    const v = Number(a.value) || 0;
-    if (a.method === 'visit') perVisit += v;
-    else if (a.method === 'sqft') perVisit += v * Math.max(0, totalArea);
-    else if (a.method === 'hour') perVisit += v * visitCrewHours;
-    else if (a.method === 'fixed') perVisit += v / Math.max(1, monthlyVisits);
-    // unknown methods silently contribute zero — fail-safe vs invalid config
-  }
-  return perVisit;
-}
-
-/* ---------------------------------------------------------------------
-   calculatePricing(input) — PURE.
-   Returns a complete result object every consumer can use.
-   --------------------------------------------------------------------- */
-function calculatePricing(input) {
-  const K = CLEANBIRD_CONSTANTS;
-  const { totalArea, tasks, profile, addons, package } = input;
-
-  // Guard rails first (cheaper to refuse than to compute garbage).
-  if (!profile) throw new Error('profile is required');
-  if (!profile.wage || profile.wage < 0) throw new Error('invalid wage');
-  if (profile.margin < 0 || profile.margin >= 100) throw new Error('invalid gross margin (must be 0–99.99%)');
-  if (profile.burden < 0 || profile.burden > 100) throw new Error('invalid burden %');
-  if (profile.overhead < 0 || profile.overhead > 100) throw new Error('invalid overhead %');
-  if (!profile.supplies || profile.supplies < 0 || profile.supplies > 100) throw new Error('invalid supplies %');
-
-  // 1. Determine the area list (real survey areas or one implicit area).
-  const areaList = buildAreaList(input);
-
-  // 2. Aggregate labor.
-  //    visitCrewHours = total CREW-hours the team needs in ONE visit to
-  //    service all areas (a 2-cleaner crew working 2.5 hrs each = 5 crew-hrs).
-  let visitCrewHours = 0;
-  for (const a of areaList) {
-    const productiveHours = a.sqft / Math.max(1, a.productivity);
-    const taskBonus = a.minTask * K.HOURS_PER_TASK_MINUTE_SLOT;
-    visitCrewHours += productiveHours + taskBonus;
-  }
-  // visitCleaners = floor(totalCrewHours / maxHoursPerCleaner) so the team can
-  // actually finish the visit in a single shift. Using a per-area maximum here
-  // would *under-staff* any reasonable single-visit cleanup (Case 4 in tests).
-  // Round up: a 15.71-hr job splits cleanly into 7 cleaners at 2.5 hrs each.
-  const visitCleaners = Math.max(1, Math.ceil(visitCrewHours / K.MAX_HOURS_PER_CLEANER_PER_VISIT));
-  // Also include global ad-hoc tasks added via the Tasks modal (legacy).
-  const globalTaskMinutes = (tasks || []).reduce((s, t) => s + (Number(t.min) || 0), 0);
-  visitCrewHours += globalTaskMinutes * K.HOURS_PER_TASK_MINUTE_SLOT;
-
-  // 3. Total monthly visits across all areas (drives monthly revenue).
-  let monthlyVisits = 0;
-  for (const a of areaList) monthlyVisits += a.freq * K.WEEKS_PER_MONTH_APPROX;
-
-  // 4. Per-visit costs.
-  //    laborPerVisit intentionally does NOT multiply by cleaners —
-  //    visitCrewHours already accounts for headcount. Multiplying again
-  //    would inflate cost by the crew size a second time (P0 #1 fix).
-  const laborPerVisit = visitCrewHours * profile.wage;
-  const burdenPerVisit = laborPerVisit * (profile.burden / 100);
-  // P0 #2 fix: supplies as % of labor should not also scale by cleaners.
-  const suppliesPerVisit = laborPerVisit * (profile.supplies / 100);
-  const overheadPerVisit = (laborPerVisit + burdenPerVisit) * (profile.overhead / 100);
-
-  const addonPerVisit = computeAddonCost(addons, totalArea, monthlyVisits, visitCrewHours);
-  const costPerVisit = laborPerVisit + burdenPerVisit + suppliesPerVisit + overheadPerVisit + addonPerVisit;
-  const elapsedHoursPerCleaner = visitCrewHours / visitCleaners; // UI-visible "wall-clock" duration
-
-  // 5. Apply package multiplier + target gross margin.
-  //    Math: clearing per-visit cost -> gross-margin gate -> package multiplier.
-  const pkgKey = (package === 'essential' || package === 'premium') ? package : 'professional';
-  const pkgMul = K.PACKAGE_MULT[pkgKey];
-  const targetMargin = Math.max(K.MARGIN_FLOOR, Math.min(K.MARGIN_CEILING, profile.margin + K.PACKAGE_MARGIN_OFFSET[pkgKey]));
-  const marginFraction = targetMargin / 100;
-  if (marginFraction >= 1) {
-    // Refuse rather than producing infinity or NaN — caller should showFatal() upstream.
-    return { error: 'Margin >= 100%, math invalid', margin: targetMargin };
-  }
-  const sellingPerVisit = (costPerVisit / (1 - marginFraction)) * pkgMul;
-
-  // 6. Monthly / annual / per-sq-ft outputs (the user's price).
-  let monthly = sellingPerVisit * monthlyVisits;
-  if (monthly < profile.minPrice) monthly = profile.minPrice;
-  const annual = monthly * 12;
-  const psf = totalArea > 0 ? monthly / totalArea : 0;
-
-  // 7. Annual cost components (P0 #4 fix: stored separately, used in proposal).
-  const annualLabor      = laborPerVisit * 12 * monthlyVisits;
-  const annualBurden     = burdenPerVisit * 12 * monthlyVisits;
-  const annualSupplies   = suppliesPerVisit * 12 * monthlyVisits;
-  const annualOverhead   = overheadPerVisit * 12 * monthlyVisits;
-  const annualAddons     = addonPerVisit * 12 * monthlyVisits;
-  const annualDirectCost = annualLabor + annualBurden + annualSupplies + annualOverhead + annualAddons;
-
-  return {
-    // Visit-level math
-    visitCrewHours, visitCleaners, elapsedHoursPerCleaner, monthlyVisits,
-    laborPerVisit, burdenPerVisit, suppliesPerVisit, overheadPerVisit, addonPerVisit,
-    costPerVisit, sellingPerVisit,
-    // Pricing outputs
-    targetMargin, packageMultiplier: pkgMul, monthly, annual, psf,
-    // Annual-cost components (used in proposal & Why-this-Price)
-    annualLabor, annualBurden, annualSupplies, annualOverhead, annualAddons, annualDirectCost,
-    // Convenience aggregates
-    totalMonthlyCrewHours: visitCrewHours * monthlyVisits
-  };
-}
-
-if(typeof window!=='undefined'){window.CleanBidPricing={calculatePricing,buildAreaList,computeAddonCost,CLEANBIRD_CONSTANTS};}
-
-console.log('[CleanBid] boot v2');
 
 /* ====================================================================
    STATE + PERSISTENCE
@@ -4693,8 +4525,12 @@ function loadProp(id){
    QUOTES — with version count, follow-up, status menu
 ==================================================================== */
 function renderQuotes(){
-  renderQuotesMetrics();
-  renderQuotaCard();
+  // H3: fetch quota ONCE, cache it, and render both the metrics band and the
+  // quota ring from the same value so cloud mode never flashes a misleading
+  // 0/0 (state.editQuota is undefined in cloud; the server is the source).
+  const qp = window.__cleanbid_quota.getQuota(state);
+  Promise.resolve(qp).then(q=>{ _cachedQuota = q; renderQuotesMetrics(q); renderQuotaCard(); });
+  renderQuotesMetrics(_cachedQuota); // immediate pass (local fallback)
   const filter = document.getElementById('qFilter').value;
   let qs = filter==='all' ? state.quotes : state.quotes.filter(q=>q.status===filter);
   const host = document.getElementById('qList');
@@ -5098,13 +4934,21 @@ function showDiff(quote, prevVerIdx){
    ==================================================================== */
 
 let _editQuoteId = null;
-let _editConsumed = false; // guard against double-counting from repeated clicks
+let _editConsumed = false; // secondary guard: one consume per confirmed save
+let _editSaving = false;    // C1: synchronous in-flight guard (prevents double-click double-consume)
+let _editAddons = null;     // C2: isolated working copy of add-ons (never mutates the saved quote)
+let _cachedQuota = null;    // H3: last valid quota from getQuota(); single source for metrics + ring
 
 function openEditQuote(id){
   const q = state.quotes.find(x=>x.id===id);
   if(!q){ toast('Quote not found.','error'); return; }
   _editQuoteId = id;
   _editConsumed = false;
+  _editSaving = false;
+  // C2: deep-clone add-ons into an isolated working copy. All add-on edits
+  // during this session mutate ONLY _editAddons; the saved quote's add-ons
+  // are never touched until a confirmed Save.
+  _editAddons = Array.isArray(q.addons) ? q.addons.map(a=>({ ...a })) : [];
 
   const P = q.priceSnap || state.pricing || {};
   document.getElementById('eqCompany').value = q.companyName || '';
@@ -5133,7 +4977,7 @@ function openEditQuote(id){
 
 function renderEditAddons(q){
   const host = document.getElementById('eqAddons');
-  const addons = (q.addons || []).filter(a=>a && (a.enabled || a.value));
+  const addons = (_editAddons || []).filter(a=>a && (a.enabled || a.value));
   if(!addons.length){
     host.innerHTML = '<div class="empty" style="padding:14px 0"><div class="ei">＋</div><div class="es">No add-ons configured for this quote.</div></div>';
     return;
@@ -5150,23 +4994,22 @@ function renderEditAddons(q){
 }
 
 function eqAddonChange(key, val){
-  const q = state.quotes.find(x=>x.id===_editQuoteId);
-  if(!q) return;
-  const a = (q.addons||[]).find(x=> (x.id||x.label||x.name)===key);
+  if(!_editAddons) return;
+  const a = _editAddons.find(x=> (x.id||x.label||x.name)===key);
   if(a){ a.value = parseFloat(val)||0; }
   eqRecalc();
 }
 function eqAddonToggle(key, btn){
-  const q = state.quotes.find(x=>x.id===_editQuoteId);
-  if(!q) return;
-  const a = (q.addons||[]).find(x=> (x.id||x.label||x.name)===key);
+  if(!_editAddons) return;
+  const a = _editAddons.find(x=> (x.id||x.label||x.name)===key);
   if(a){ a.enabled = !a.enabled; btn.textContent = a.enabled?'on':'off'; btn.style.opacity = a.enabled?'1':'.5'; }
   eqRecalc();
 }
 
 function eqCollectFields(){
   const q = state.quotes.find(x=>x.id===_editQuoteId);
-  const addons = q ? (q.addons||[]).map(a=>({...a})) : [];
+  // C2: add-ons come from the isolated working copy, never the live quote.
+  const addons = _editAddons ? _editAddons.map(a=>({...a})) : (q ? (q.addons||[]).map(a=>({...a})) : []);
   return {
     companyName: document.getElementById('eqCompany').value,
     propertyName: document.getElementById('eqPropName').value,
@@ -5245,80 +5088,108 @@ function closeEditQuote(){
   closeModal('editQuoteModal');
   _editQuoteId = null;
   _editConsumed = false;
+  _editSaving = false;
+  _editAddons = null; // C2: discard the working copy; original quote untouched
 }
 
 async function commitQuoteEdit(){
-  if(_editConsumed) return;
+  // C1: SYNCHRONOUS in-flight guard. Two rapid clicks both see the same
+  // call-stack frame before any await resolves, so checking _editConsumed
+  // (set only at the end) was not enough. _editSaving is set to true RIGHT
+  // HERE, before any await, so a second click returns immediately.
+  if(_editSaving) return;
+  _editSaving = true;
+  const saveBtn = document.getElementById('eqSaveBtn');
+  const setLoading = (on)=>{ if(saveBtn){ saveBtn.disabled = on; saveBtn.textContent = on ? 'Saving…' : 'Save changes'; } };
+  setLoading(true);
+
+  const finish = ()=>{ setLoading(false); _editSaving = false; };
+
   const q = state.quotes.find(x=>x.id===_editQuoteId);
-  if(!q){ toast('Quote not found.','error'); return; }
+  if(!q){ toast('Quote not found.','error'); finish(); return; }
 
   const fields = eqCollectFields();
   const errs = window.__cleanbid_quotacore.validateEditFields
     ? window.__cleanbid_quotacore.validateEditFields(fields)
     : {};
   const firstErr = Object.values(errs)[0];
-  if(firstErr){ toast(firstErr,'error',6000); return; }
-
-  const quota = await window.__cleanbid_quota.getQuota(state);
-  if(quota.exhausted){
-    toast('Your quote-edit quota has been reached. No edits remaining.', 'error', 8000);
-    await eqRefreshQuotaUi();
-    return;
-  }
-
-  const applyRes = window.__cleanbid_quoteedit.applyEditToQuote(q, fields, state.pricing, {
-    actor: (window.__cleanbid_user && window.__cleanbid_user.full_name) || null
-  });
-  if(!applyRes.ok || !applyRes.quote){
-    toast('Could not apply the edit: ' + (applyRes.error||'unknown error'), 'error', 8000);
-    return;
-  }
-
-  const idx = state.quotes.findIndex(x=>x.id===_editQuoteId);
-  if(idx<0){ toast('Quote not found.','error'); return; }
-  const revised = applyRes.quote;
-  state.quotes[idx] = revised; // swap in the revised object (in-memory)
+  if(firstErr){ toast(firstErr,'error',6000); finish(); return; }
 
   try {
-    await saveStateToDb();
-  } catch(e){
-    state.quotes[idx] = q; // roll back: original quote untouched
-    console.error('[CleanBid] Edit save failed:', e);
-    toast('Could not save the edit — your original quote is unchanged.', 'error', 8000);
-    return;
-  }
+    const quota = await window.__cleanbid_quota.getQuota(state);
+    if(quota.exhausted){
+      toast('Your quote-edit quota has been reached. No edits remaining.', 'error', 8000);
+      await eqRefreshQuotaUi();
+      finish();
+      return;
+    }
 
-  const cons = await window.__cleanbid_quota.consumeEdit(state);
-  if(!cons.ok){
+    const applyRes = window.__cleanbid_quoteedit.applyEditToQuote(q, fields, state.pricing, {
+      actor: (window.__cleanbid_user && window.__cleanbid_user.full_name) || null
+    });
+    if(!applyRes.ok || !applyRes.quote){
+      toast('Could not apply the edit: ' + (applyRes.error||'unknown error'), 'error', 8000);
+      finish();
+      return;
+    }
+
+    const idx = state.quotes.findIndex(x=>x.id===_editQuoteId);
+    if(idx<0){ toast('Quote not found.','error'); finish(); return; }
+    const revised = applyRes.quote;
+    state.quotes[idx] = revised; // swap in the revised object (in-memory)
+
+    try {
+      await saveStateToDb();
+    } catch(e){
+      state.quotes[idx] = q; // roll back: original quote untouched
+      console.error('[CleanBid] Edit save failed:', e);
+      toast('Could not save the edit — your original quote is unchanged.', 'error', 8000);
+      finish();
+      return;
+    }
+
+    const cons = await window.__cleanbid_quota.consumeEdit(state);
+    if(!cons.ok){
+      if(state && state.editQuota !== undefined) state.editQuota = cons.quota;
+      renderQuotes(); renderDash(); await renderQuotaCard();
+      toast('Saved, but your edit quota is now exhausted.', 'warn', 8000);
+      _editConsumed = true;
+      finish();
+      closeEditQuote();
+      return;
+    }
+
     if(state && state.editQuota !== undefined) state.editQuota = cons.quota;
+    state.activity.unshift({
+      avt:'JD', actor:'Jane', what:'edited', object:revised.propertyName,
+      time:'just now', entity_type:'quote', entity_id:revised.id,
+      metadata:{ version: revised.version, reason: (fields.editReason||'').trim()||null, editUsed: cons.quota.used, quota: cons.quota.quota }
+    });
+    try { await saveStateToDb(); } catch(_) { /* quota already server-confirmed */ }
+
+    _editConsumed = true;
     renderQuotes(); renderDash(); await renderQuotaCard();
-    toast('Saved, but your edit quota is now exhausted.', 'warn', 8000);
+    toast('Quote updated to v'+revised.version+'.');
+    finish();
     closeEditQuote();
-    return;
+  } catch(e){
+    // Any unexpected exception: never leave the guard stuck on, never consume.
+    console.error('[CleanBid] Edit commit crashed:', e);
+    toast('Something went wrong while saving the edit.', 'error', 8000);
+    finish();
   }
-
-  if(state && state.editQuota !== undefined) state.editQuota = cons.quota;
-  state.activity.unshift({
-    avt:'JD', actor:'Jane', what:'edited', object:revised.propertyName,
-    time:'just now', entity_type:'quote', entity_id:revised.id,
-    metadata:{ version: revised.version, reason: (fields.editReason||'').trim()||null, editUsed: cons.quota.used, quota: cons.quota.quota }
-  });
-  try { await saveStateToDb(); } catch(_) { /* quota already server-confirmed */ }
-
-  _editConsumed = true;
-  renderQuotes(); renderDash(); await renderQuotaCard();
-  toast('Quote updated to v'+revised.version+'.');
-  closeEditQuote();
 }
 
 /* ====================================================================
    QUOTA CARD + QUOTES METRICS (feature build)
    All numbers come from real application data — no demo/hardcoded values.
    ==================================================================== */
-async function renderQuotaCard(){
+async function renderQuotaCard(cached){
   const card = document.getElementById('quotaCard');
   if(!card) return;
-  const q = await window.__cleanbid_quota.getQuota(state);
+  // Prefer the cached value (H3) so metrics + ring agree; otherwise fetch.
+  const q = cached || await window.__cleanbid_quota.getQuota(state);
+  _cachedQuota = q;
   if(q.quota<=0){ card.style.display='none'; return; }
   card.style.display='flex';
   const pct = q.quota>0 ? Math.round((q.used/q.quota)*100) : 0;
@@ -5331,7 +5202,7 @@ async function renderQuotaCard(){
   document.getElementById('quotaBarFill').style.width = pct+'%';
 }
 
-function renderQuotesMetrics(){
+function renderQuotesMetrics(cached){
   const set = (id,v)=>{ const el=document.getElementById(id); if(el) el.textContent=v; };
   const cur = state.pricing.currency==='USD'?'$':state.pricing.currency==='GBP'?'£':state.pricing.currency==='EUR'?'€':'$';
   const all = state.quotes||[];
@@ -5342,7 +5213,9 @@ function renderQuotesMetrics(){
   const pipe = open.reduce((s,q)=>s+(q.annual||0),0);
   const sent = all.filter(q=>['sent','viewed','negotiation','won','lost'].includes(q.status));
   const avg = sent.length ? Math.round(sent.reduce((s,q)=>s+(q.monthly||0),0)/sent.length) : 0;
-  const quota = (state.editQuota && typeof state.editQuota==='object') ? state.editQuota : {used:0,quota:0,remaining:0};
+  // H3: prefer the single cached quota (works in cloud where state.editQuota is
+  // undefined); fall back to the local blob value, then a safe zero object.
+  const quota = cached || (state.editQuota && typeof state.editQuota==='object' ? state.editQuota : (_cachedQuota || {used:0,quota:0,remaining:0}));
 
   set('mTotal', all.length);
   set('mTotalS', all.length===1?'1 quote':'quotes');
@@ -6931,6 +6804,10 @@ console.log('[CleanBid] ready v2');
   import { getQuota, consumeEdit, ensureQuota, saveQuota } from './src/quota.js';
   import { recalculateQuote, applyEditToQuote, quotePriceFields } from './src/quote-edit.js';
   import { validateEditFields } from './src/quota-core.js';
+  // H2: ONE authoritative pricing engine. 01-pricing-engine.js is the single
+  // source of truth; it sets window.CleanBidPricing on import. The inline
+  // duplicate that used to live in this shell has been removed.
+  import * as CleanBidPricingModule from './01-pricing-engine.js';
 
   window.__cleanbid_auth = { initAuth, signUp, signIn, signOut, getCurrentUser, getSession, inviteTeamMember, acceptInvitation };
   window.__cleanbid_db = { initDb, saveState, loadState, loadDemoState, saveDemoState, setCurrentWorkspaceId, getDbMode, flushSave, restoreStateToCloud: restoreStateToSupabase };
@@ -6942,6 +6819,10 @@ console.log('[CleanBid] ready v2');
   window.__cleanbid_quota = { getQuota, consumeEdit, ensureQuota, saveQuota };
   window.__cleanbid_quoteedit = { recalculateQuote, applyEditToQuote, quotePriceFields };
   window.__cleanbid_quotacore = { validateEditFields };
+  // H2: expose the single authoritative engine (01-pricing-engine.js) so the
+  // classic-script pricing consumers (recalc, tier prices, proposal) use the
+  // exact same implementation as the quote-edit path. No second formula.
+  window.CleanBidPricing = CleanBidPricingModule;
 
   // Trigger auth flow now that modules are registered
   if (window.__cleanbid_initAuthFlow) {
