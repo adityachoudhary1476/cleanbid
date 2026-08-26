@@ -46,6 +46,7 @@ function makeWorkspaceBlob(prefix, versionCount = 1) {
     addons: [{ id: 'ad-1', name: 'Window', enabled: false }],
     users: [{ id: 1, name: `${prefix} User`, role: 'admin' }],
     activity: [{ avt: 'X', actor: `${prefix}`, what: 'did', time: 'now' }],
+    editQuota: null,
   };
 }
 

@@ -29,6 +29,7 @@ export const WORKSPACE_STATE_KEYS = [
   'addons',
   'users',
   'activity',
+  'editQuota',
 ];
 
 // Keys that are GLOBAL (current auth user / session metadata, transient UI)
@@ -46,12 +47,13 @@ const KEY_KIND = {
   profiles: 'array',
   areaTypes: 'array',
   tasks: 'array',
-  customers: 'array',
-  properties: 'array',
-  quotes: 'array',
-  addons: 'array',
-  users: 'array',
-  activity: 'array',
+  'customers': 'array',
+  'properties': 'array',
+  'quotes': 'array',
+  'addons': 'array',
+  'users': 'array',
+  'activity': 'array',
+  'editQuota': 'object',
 };
 
 function clone(value) {
@@ -88,6 +90,7 @@ export function defaultWorkspaceData() {
     addons: [],
     users: [],
     activity: [],
+    editQuota: null,
   };
 }
 

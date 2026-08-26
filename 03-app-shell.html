@@ -1017,7 +1017,65 @@ tbody tr:hover{background:var(--paper-3)}
 @media (prefers-reduced-motion:reduce){
   .hs *,.hs *::before,.hs *::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}
 }
+
+/* ====================================================================
+   QUOTE EDITING + QUOTA + BILLING METRICS (feature build)
+   ==================================================================== */
+.qm-band{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:18px}
+.qm{background:var(--paper-2);border:1px solid var(--line);border-radius:12px;padding:16px 16px 14px;position:relative;overflow:hidden;min-height:96px;display:flex;flex-direction:column;justify-content:space-between}
+.qm::after{content:"";position:absolute;top:-18px;right:-18px;width:64px;height:64px;border-radius:50%;background:var(--accent);opacity:.08}
+.qm .qm-l{font-size:10px;text-transform:uppercase;letter-spacing:1.4px;color:var(--text-muted);font-weight:700}
+.qm .qm-v{font-family:'Fraunces',serif;font-style:italic;font-weight:500;font-size:26px;line-height:1;color:var(--ink);letter-spacing:-.5px;margin-top:8px}
+.qm .qm-s{font-size:11px;color:var(--text-muted);margin-top:6px}
+.qm.accent{background:linear-gradient(135deg,var(--accent-soft),var(--paper-2))}
+.qm.accent .qm-v{color:var(--accent)}
+.qm.dark{background:var(--ink);border-color:var(--ink)}
+.qm.dark .qm-l{color:rgba(255,255,255,.6)}
+.qm.dark .qm-v{color:#fff}
+.qm.dark .qm-s{color:rgba(255,255,255,.55)}
+.qm.dark::after{background:rgba(255,255,255,.12)}
+
+.quota-card{background:var(--paper-2);border:1px solid var(--line);border-radius:12px;padding:16px 18px;display:flex;align-items:center;gap:16px;margin-bottom:18px}
+.quota-card.exhausted{border-color:var(--bad);background:var(--bad-soft)}
+.quota-ring{flex-shrink:0;width:54px;height:54px;border-radius:50%;background:conic-gradient(var(--accent) calc(var(--p,0)*1%), var(--line) 0);display:grid;place-items:center;position:relative}
+.quota-ring::before{content:"";position:absolute;inset:6px;border-radius:50%;background:var(--paper-2)}
+.quota-ring .qr{position:relative;font-size:13px;font-weight:700;color:var(--ink)}
+.quota-body{flex:1;min-width:0}
+.quota-body .q-ttl{font-size:11px;text-transform:uppercase;letter-spacing:1.4px;color:var(--text-muted);font-weight:700}
+.quota-body .q-main{font-size:15px;font-weight:600;color:var(--ink);margin-top:2px}
+.quota-body .q-main b{font-family:'Fraunces',serif;font-style:italic;color:var(--accent);font-size:18px}
+.quota-bar{height:6px;border-radius:6px;background:var(--line);margin-top:8px;overflow:hidden}
+.quota-bar i{display:block;height:100%;background:var(--accent);border-radius:6px}
+.quota-card.exhausted .quota-bar i{background:var(--bad)}
+.quota-card.exhausted .q-main b{color:var(--bad)}
+
+.editgrid{display:grid;grid-template-columns:1fr 1fr;gap:14px 18px}
+.editgrid .full{grid-column:1 / -1}
+.sec-h{font-size:10px;text-transform:uppercase;letter-spacing:1.6px;color:var(--accent);font-weight:800;margin:6px 0 10px;display:flex;align-items:center;gap:8px}
+.sec-h::after{content:"";flex:1;height:1px;background:var(--line-soft)}
+.edit-live{background:var(--ink);color:#fff;border-radius:12px;padding:18px 20px;margin-top:6px}
+.edit-live h4{font-family:'Fraunces',serif;font-style:italic;font-size:14px;margin-bottom:10px;color:rgba(255,255,255,.7)}
+.edit-live .el-row{display:flex;justify-content:space-between;padding:6px 0;font-size:13px;border-bottom:1px solid rgba(255,255,255,.08)}
+.edit-live .el-row:last-child{border-bottom:0}
+.edit-live .el-row .l{color:rgba(255,255,255,.65)}
+.edit-live .el-row .v{font-weight:700}
+.edit-live .el-tot{margin-top:12px;padding-top:12px;border-top:2px solid var(--accent)}
+.edit-live .el-tot .l{font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--accent);font-weight:700}
+.edit-live .el-tot .v{font-family:'Fraunces',serif;font-style:italic;font-size:34px;line-height:1}
+.edit-live.warn{background:var(--warn)}
+.edit-live.err{background:var(--bad)}
+.err-note{color:var(--bad);font-size:12.5px;font-weight:600;margin-top:8px}
+.addon-edit-row{display:grid;grid-template-columns:1.4fr 1fr .8fr auto;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line-soft);font-size:13px}
+.addon-edit-row:last-child{border-bottom:0}
+.addon-edit-row .aen{font-weight:600;color:var(--ink)}
+.field.tiny input,.field.tiny select{padding:7px 10px;font-size:13px}
+.modified-dot{position:absolute;top:10px;right:10px;width:8px;height:8px;border-radius:50%;background:var(--accent)}
+.field{position:relative}
+
+@media (max-width:1200px){ .qm-band{grid-template-columns:repeat(3,1fr)} }
+@media (max-width:760px){ .qm-band{grid-template-columns:repeat(2,1fr)} .editgrid{grid-template-columns:1fr} .editgrid .full{grid-column:auto} .modal.lg{max-width:94vw} }
 </style>
+
 </head>
 <body>
 
@@ -1905,11 +1963,28 @@ tbody tr:hover{background:var(--paper-3)}
           <button class="btn btn-accent" onclick="goTo('newquote')">+ New Quote</button>
         </div>
       </div>
+      <!-- Quota + real-data metrics band (feature build) -->
+      <div class="quota-card" id="quotaCard" style="display:none">
+        <div class="quota-ring" id="quotaRing"><span class="qr" id="quotaRingTxt">0</span></div>
+        <div class="quota-body">
+          <div class="q-ttl">Quote Edits</div>
+          <div class="q-main"><b id="quotaUsed">0</b> / <span id="quotaLimit">0</span> used · <span id="quotaRemain">0</span> remaining</div>
+          <div class="quota-bar"><i id="quotaBarFill" style="width:0%"></i></div>
+        </div>
+      </div>
+      <div class="qm-band" id="quotesMetrics">
+        <div class="qm dark"><div class="qm-l">Total Quotes</div><div class="qm-v" id="mTotal">0</div><div class="qm-s" id="mTotalS">—</div></div>
+        <div class="qm accent"><div class="qm-l">Quotes This Month</div><div class="qm-v" id="mMonth">0</div><div class="qm-s" id="mMonthS">—</div></div>
+        <div class="qm"><div class="qm-l">Edits Used</div><div class="qm-v" id="mEdits">0</div><div class="qm-s" id="mEditsS">of 0 quota</div></div>
+        <div class="qm"><div class="qm-l">Edits Remaining</div><div class="qm-v" id="mRemain">0</div><div class="qm-s" id="mRemainS">—</div></div>
+        <div class="qm"><div class="qm-l">Pipeline Value</div><div class="qm-v" id="mPipe">$0</div><div class="qm-s" id="mPipeS">open quotes</div></div>
+        <div class="qm"><div class="qm-l">Avg Quote</div><div class="qm-v" id="mAvg">$0</div><div class="qm-s" id="mAvgS">/mo</div></div>
+      </div>
       <div class="tw">
         <table>
-          <thead><tr><th>Property</th><th>Client</th><th>Monthly</th><th>Annual</th><th>Margin</th><th>Versions</th><th>Status</th><th>Follow-up</th><th></th></tr></thead>
+          <thead><tr><th>Property</th><th>Client</th><th>Monthly</th><th>Annual</th><th>Margin</th><th>Versions</th><th>Status</th><th>Follow-up</th><th>Edit</th><th></th></tr></thead>
           <tbody id="qList">
-            <tr><td colspan="9"><div class="empty"><div class="ei">○</div><div class="et">No quotes found.</div><div class="es">Build your first estimate or try another filter.</div></div></td></tr>
+            <tr><td colspan="10"><div class="empty"><div class="ei">○</div><div class="et">No quotes found.</div><div class="es">Build your first estimate or try another filter.</div></div></td></tr>
           </tbody>
         </table>
       </div>
@@ -2210,7 +2285,83 @@ Demo City, USA</textarea></div>
   </div>
 </div>
 
+<!-- Edit Quote modal (feature build) -->
+<div class="scrim" id="editQuoteModal">
+  <div class="modal lg">
+    <div class="m-head"><h3>Edit quote</h3><button class="x" onclick="closeEditQuote()">✕</button></div>
+    <div class="m-body">
+      <p class="hint" style="margin-bottom:14px">Change the estimating inputs below. The recalculated price updates live through the same pricing engine used to build the original quote. Nothing is saved until you choose <b>Save changes</b>.</p>
+      <div class="editgrid">
+        <div class="full"><div class="sec-h">Property / Job</div></div>
+        <div class="field tiny"><label class="label">Customer / company</label><input class="input" id="eqCompany"></div>
+        <div class="field tiny"><label class="label">Property name</label><input class="input" id="eqPropName"></div>
+        <div class="field tiny"><label class="label req">Square footage</label><input class="input tabnum" type="number" id="eqSqft" oninput="eqRecalc()"></div>
+        <div class="field tiny"><label class="label">Property type</label>
+          <select class="select" id="eqType" onchange="eqRecalc()">
+            <option value="office">Office</option><option value="medical">Medical</option><option value="retail">Retail</option>
+            <option value="warehouse">Warehouse</option><option value="school">School</option><option value="industrial">Industrial</option>
+            <option value="hospitality">Hospitality</option><option value="government">Government</option>
+          </select>
+        </div>
+        <div class="field tiny"><label class="label">Address</label><input class="input" id="eqAddr"></div>
+        <div class="field tiny"><label class="label">Floors</label><input class="input tabnum" type="number" id="eqFloors" oninput="eqRecalc()"></div>
+        <div class="field tiny"><label class="label">Cleaning frequency</label>
+          <select class="select" id="eqFreq" onchange="eqRecalc()">
+            <option value="7">Daily (7x)</option><option value="5">5x/week</option>
+            <option value="3">3x/week</option><option value="2">2x/week</option>
+            <option value="1">Weekly</option><option value="0.5">Bi-weekly</option>
+          </select>
+        </div>
+        <div class="field tiny"><label class="label">Package</label>
+          <select class="select" id="eqPackage" onchange="eqRecalc()">
+            <option value="essential">Essential</option><option value="professional">Professional</option><option value="premium">Premium</option>
+          </select>
+        </div>
+
+        <div class="full"><div class="sec-h">Labour</div></div>
+        <div class="field tiny"><label class="label req">Cleaners</label><input class="input tabnum" type="number" id="eqCleaners" oninput="eqRecalc()"></div>
+        <div class="field tiny"><label class="label req">Hours per visit</label><input class="input tabnum" type="number" step="0.25" id="eqHours" oninput="eqRecalc()"></div>
+        <div class="field tiny"><label class="label req">Labor rate ($/hr)</label><input class="input tabnum" type="number" step="0.5" id="eqWage" oninput="eqRecalc()"></div>
+        <div class="field tiny"><label class="label">Payroll burden (%)</label><input class="input tabnum" type="number" step="0.5" id="eqBurden" oninput="eqRecalc()"></div>
+
+        <div class="full"><div class="sec-h">Costs</div></div>
+        <div class="field tiny"><label class="label">Supplies (%)</label><input class="input tabnum" type="number" step="0.5" id="eqSupplies" oninput="eqRecalc()"></div>
+        <div class="field tiny"><label class="label">Overhead (%)</label><input class="input tabnum" type="number" step="0.5" id="eqOverhead" oninput="eqRecalc()"></div>
+
+        <div class="full"><div class="sec-h">Pricing</div></div>
+        <div class="field tiny"><label class="label">Target margin (%)</label><input class="input tabnum" type="number" step="0.5" id="eqMargin" oninput="eqRecalc()"></div>
+        <div class="field tiny"><label class="label">Discount (%)</label><input class="input tabnum" type="number" step="0.5" id="eqDiscount" oninput="eqRecalc()" placeholder="0"></div>
+
+        <div class="full"><div class="sec-h">Add-on services</div></div>
+        <div class="full" id="eqAddons">
+          <div class="empty" style="padding:14px 0"><div class="ei">＋</div><div class="es">No add-ons configured for this quote.</div></div>
+        </div>
+      </div>
+
+      <div class="edit-live" id="eqLive">
+        <h4>Recalculated result (live)</h4>
+        <div class="el-row"><span class="l">Total estimated cost / visit</span><span class="v" id="eqCostV">$0</span></div>
+        <div class="el-row"><span class="l">Customer price / month</span><span class="v" id="eqMonthly">$0</span></div>
+        <div class="el-row"><span class="l">Annual contract value</span><span class="v" id="eqAnnual">$0</span></div>
+        <div class="el-row"><span class="l">Profit / year</span><span class="v" id="eqProfit">$0</span></div>
+        <div class="el-row"><span class="l">Margin</span><span class="v" id="eqMarginV">0%</span></div>
+        <div class="el-row"><span class="l">Per sq ft / month</span><span class="v" id="eqPsf">$0.00</span></div>
+        <div class="el-tot"><div class="l">Customer price / month</div><div class="v" id="eqFinal">$0</div></div>
+        <div class="err-note" id="eqErr" style="display:none"></div>
+      </div>
+
+      <div class="field full" style="margin-top:14px"><label class="label">Reason for edit (optional)</label><input class="input" id="eqReason" placeholder="E.g. Customer asked to reduce frequency"></div>
+    </div>
+    <div class="m-foot">
+      <button class="btn btn-outline btn-sm" onclick="closeEditQuote()">Cancel</button>
+      <button class="btn btn-ghost btn-sm" id="eqQuotaWarn" style="display:none;color:var(--bad);cursor:default" disabled></button>
+      <button class="btn btn-accent btn-sm" id="eqSaveBtn" onclick="commitQuoteEdit()">Save changes</button>
+    </div>
+  </div>
+</div>
+
 <!-- Add area modal -->
+
 <div class="scrim" id="addAreaModal">
   <div class="modal">
     <div class="m-head"><h3>Add area</h3><button class="x" onclick="closeModal('addAreaModal')">✕</button></div>
@@ -4542,10 +4693,12 @@ function loadProp(id){
    QUOTES — with version count, follow-up, status menu
 ==================================================================== */
 function renderQuotes(){
+  renderQuotesMetrics();
+  renderQuotaCard();
   const filter = document.getElementById('qFilter').value;
   let qs = filter==='all' ? state.quotes : state.quotes.filter(q=>q.status===filter);
   const host = document.getElementById('qList');
-  if(qs.length===0){ host.innerHTML='<tr><td colspan="9"><div class="empty"><div class="ei">○</div><div class="et">No quotes found.</div><div class="es">Try another status, or build a new one.</div></div></td></tr>'; return; }
+  if(qs.length===0){ host.innerHTML='<tr><td colspan="10"><div class="empty"><div class="ei">○</div><div class="et">No quotes found.</div><div class="es">Try another status, or build a new one.</div></div></td></tr>'; return; }
   host.innerHTML = qs.map(q=>{
     const verCount = (q.versions||[]).length;
     const verLabel = verCount>1?`v${q.version} of ${verCount}`:'v1';
@@ -4561,6 +4714,9 @@ function renderQuotes(){
       <td>${verPicker}</td>
       <td><span class="badge b-${q.status}">${q.status}</span></td>
       <td style="font-size:12.5px">${fu}</td>
+      <td>
+        <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openEditQuote(${escJs(q.id)})">Edit</button>
+      </td>
       <td>
         <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openStatus(${escJs(q.id)})">Status</button>
         <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openQuote(${escJs(q.id)})">Open →</button>
@@ -4931,6 +5087,275 @@ function showDiff(quote, prevVerIdx){
   }).join('');
   document.getElementById('diffContent').innerHTML = html;
   openModal('diffModal');
+}
+
+/* ====================================================================
+   QUOTE EDITING (feature build)
+   Single source of truth: recalculations ALWAYS go through
+   CleanBidPricing.calculatePricing() via src/quote-edit.js. No second
+   pricing formula lives here. The edit only persists on a confirmed save;
+   cancelling leaves the original quote untouched.
+   ==================================================================== */
+
+let _editQuoteId = null;
+let _editConsumed = false; // guard against double-counting from repeated clicks
+
+function openEditQuote(id){
+  const q = state.quotes.find(x=>x.id===id);
+  if(!q){ toast('Quote not found.','error'); return; }
+  _editQuoteId = id;
+  _editConsumed = false;
+
+  const P = q.priceSnap || state.pricing || {};
+  document.getElementById('eqCompany').value = q.companyName || '';
+  document.getElementById('eqPropName').value = q.propertyName || '';
+  document.getElementById('eqSqft').value = q.sqft ?? '';
+  document.getElementById('eqType').value = q.type || 'office';
+  document.getElementById('eqAddr').value = q.propertyAddress || '';
+  document.getElementById('eqFloors').value = q.floors ?? 1;
+  document.getElementById('eqFreq').value = q.frequency ?? 1;
+  document.getElementById('eqPackage').value = q.package || 'professional';
+  document.getElementById('eqCleaners').value = q.cleaners ?? 1;
+  document.getElementById('eqHours').value = q.hoursPerVisit ?? '';
+  document.getElementById('eqWage').value = P.wage ?? state.pricing.wage ?? 0;
+  document.getElementById('eqBurden').value = P.burden ?? state.pricing.burden ?? 0;
+  document.getElementById('eqSupplies').value = P.supplies ?? state.pricing.supplies ?? 0;
+  document.getElementById('eqOverhead').value = P.overhead ?? state.pricing.overhead ?? 0;
+  document.getElementById('eqMargin').value = P.margin ?? state.pricing.margin ?? 0;
+  document.getElementById('eqDiscount').value = q.discountPct ? q.discountPct : '';
+  document.getElementById('eqReason').value = q.editReason || '';
+
+  renderEditAddons(q);
+  eqRecalc();
+  eqRefreshQuotaUi();
+  openModal('editQuoteModal');
+}
+
+function renderEditAddons(q){
+  const host = document.getElementById('eqAddons');
+  const addons = (q.addons || []).filter(a=>a && (a.enabled || a.value));
+  if(!addons.length){
+    host.innerHTML = '<div class="empty" style="padding:14px 0"><div class="ei">＋</div><div class="es">No add-ons configured for this quote.</div></div>';
+    return;
+  }
+  host.innerHTML = addons.map(a=>`
+    <div class="addon-edit-row">
+      <div class="aen">${esc(a.label || a.name || 'Add-on')}</div>
+      <div style="font-size:11px;color:var(--text-muted)">${esc(a.method || 'visit')}</div>
+      <input class="input tabnum tiny" type="number" step="0.5" value="${Number(a.value)||0}"
+             oninput="eqAddonChange(${escJs(a.id||a.label||a.name)}, this.value)"
+             data-addon="${esc(a.id||a.label||a.name)}" style="min-width:90px">
+      <button class="rm" title="Toggle" onclick="eqAddonToggle(${escJs(a.id||a.label||a.name)}, this)">${a.enabled?'on':'off'}</button>
+    </div>`).join('');
+}
+
+function eqAddonChange(key, val){
+  const q = state.quotes.find(x=>x.id===_editQuoteId);
+  if(!q) return;
+  const a = (q.addons||[]).find(x=> (x.id||x.label||x.name)===key);
+  if(a){ a.value = parseFloat(val)||0; }
+  eqRecalc();
+}
+function eqAddonToggle(key, btn){
+  const q = state.quotes.find(x=>x.id===_editQuoteId);
+  if(!q) return;
+  const a = (q.addons||[]).find(x=> (x.id||x.label||x.name)===key);
+  if(a){ a.enabled = !a.enabled; btn.textContent = a.enabled?'on':'off'; btn.style.opacity = a.enabled?'1':'.5'; }
+  eqRecalc();
+}
+
+function eqCollectFields(){
+  const q = state.quotes.find(x=>x.id===_editQuoteId);
+  const addons = q ? (q.addons||[]).map(a=>({...a})) : [];
+  return {
+    companyName: document.getElementById('eqCompany').value,
+    propertyName: document.getElementById('eqPropName').value,
+    propertyAddress: document.getElementById('eqAddr').value,
+    type: document.getElementById('eqType').value,
+    sqft: document.getElementById('eqSqft').value,
+    floors: document.getElementById('eqFloors').value,
+    frequency: document.getElementById('eqFreq').value,
+    package: document.getElementById('eqPackage').value,
+    cleaners: document.getElementById('eqCleaners').value,
+    hoursPerVisit: document.getElementById('eqHours').value,
+    wage: document.getElementById('eqWage').value,
+    burden: document.getElementById('eqBurden').value,
+    supplies: document.getElementById('eqSupplies').value,
+    overhead: document.getElementById('eqOverhead').value,
+    margin: document.getElementById('eqMargin').value,
+    discount: document.getElementById('eqDiscount').value,
+    editReason: document.getElementById('eqReason').value,
+    addons,
+  };
+}
+
+function eqRecalc(){
+  const q = state.quotes.find(x=>x.id===_editQuoteId);
+  if(!q) return;
+  const fields = eqCollectFields();
+  const errEl = document.getElementById('eqErr');
+  const liveEl = document.getElementById('eqLive');
+  const saveBtn = document.getElementById('eqSaveBtn');
+
+  const res = window.__cleanbid_quoteedit.recalculateQuote(q, fields, state.pricing);
+  if(!res.ok){
+    liveEl.classList.add('err');
+    if(errEl){ errEl.style.display='block'; errEl.textContent = res.error; }
+    if(saveBtn) saveBtn.disabled = true;
+    return;
+  }
+  liveEl.classList.remove('err');
+  if(errEl) errEl.style.display='none';
+  if(saveBtn) saveBtn.disabled = false;
+
+  const c = res.calc;
+  const cur = state.pricing.currency==='USD'?'$':state.pricing.currency==='GBP'?'£':state.pricing.currency==='EUR'?'€':'$';
+  const baseArea = (q.sqft||0) || (c.totalArea||0);
+  const annualDirect = c.annualDirectCost;
+  const profit = res.finalAnnual - annualDirect;
+  const psf = baseArea>0 ? res.finalMonthly/baseArea : 0;
+
+  document.getElementById('eqCostV').textContent = cur+Math.round(c.costPerVisit).toLocaleString();
+  document.getElementById('eqMonthly').textContent = cur+res.finalMonthly.toLocaleString();
+  document.getElementById('eqAnnual').textContent = cur+res.finalAnnual.toLocaleString();
+  document.getElementById('eqProfit').textContent = cur+Math.round(profit).toLocaleString();
+  document.getElementById('eqMarginV').textContent = c.targetMargin.toFixed(1)+'%';
+  document.getElementById('eqPsf').textContent = cur+psf.toFixed(2);
+  document.getElementById('eqFinal').textContent = cur+res.finalMonthly.toLocaleString();
+
+  eqRefreshQuotaUi();
+}
+
+async function eqRefreshQuotaUi(){
+  const saveBtn = document.getElementById('eqSaveBtn');
+  const warn = document.getElementById('eqQuotaWarn');
+  try {
+    const q = await window.__cleanbid_quota.getQuota(state);
+    if(q.exhausted){
+      if(saveBtn) saveBtn.disabled = true;
+      if(warn){ warn.style.display='inline-block'; warn.textContent = 'Edit quota reached — cannot save'; }
+    } else {
+      if(saveBtn) saveBtn.disabled = false;
+      if(warn){ warn.style.display='none'; warn.textContent=''; }
+    }
+  } catch(e){ /* non-fatal for preview */ }
+}
+
+function closeEditQuote(){
+  closeModal('editQuoteModal');
+  _editQuoteId = null;
+  _editConsumed = false;
+}
+
+async function commitQuoteEdit(){
+  if(_editConsumed) return;
+  const q = state.quotes.find(x=>x.id===_editQuoteId);
+  if(!q){ toast('Quote not found.','error'); return; }
+
+  const fields = eqCollectFields();
+  const errs = window.__cleanbid_quotacore.validateEditFields
+    ? window.__cleanbid_quotacore.validateEditFields(fields)
+    : {};
+  const firstErr = Object.values(errs)[0];
+  if(firstErr){ toast(firstErr,'error',6000); return; }
+
+  const quota = await window.__cleanbid_quota.getQuota(state);
+  if(quota.exhausted){
+    toast('Your quote-edit quota has been reached. No edits remaining.', 'error', 8000);
+    await eqRefreshQuotaUi();
+    return;
+  }
+
+  const applyRes = window.__cleanbid_quoteedit.applyEditToQuote(q, fields, state.pricing, {
+    actor: (window.__cleanbid_user && window.__cleanbid_user.full_name) || null
+  });
+  if(!applyRes.ok || !applyRes.quote){
+    toast('Could not apply the edit: ' + (applyRes.error||'unknown error'), 'error', 8000);
+    return;
+  }
+
+  const idx = state.quotes.findIndex(x=>x.id===_editQuoteId);
+  if(idx<0){ toast('Quote not found.','error'); return; }
+  const revised = applyRes.quote;
+  state.quotes[idx] = revised; // swap in the revised object (in-memory)
+
+  try {
+    await saveStateToDb();
+  } catch(e){
+    state.quotes[idx] = q; // roll back: original quote untouched
+    console.error('[CleanBid] Edit save failed:', e);
+    toast('Could not save the edit — your original quote is unchanged.', 'error', 8000);
+    return;
+  }
+
+  const cons = await window.__cleanbid_quota.consumeEdit(state);
+  if(!cons.ok){
+    if(state && state.editQuota !== undefined) state.editQuota = cons.quota;
+    renderQuotes(); renderDash(); await renderQuotaCard();
+    toast('Saved, but your edit quota is now exhausted.', 'warn', 8000);
+    closeEditQuote();
+    return;
+  }
+
+  if(state && state.editQuota !== undefined) state.editQuota = cons.quota;
+  state.activity.unshift({
+    avt:'JD', actor:'Jane', what:'edited', object:revised.propertyName,
+    time:'just now', entity_type:'quote', entity_id:revised.id,
+    metadata:{ version: revised.version, reason: (fields.editReason||'').trim()||null, editUsed: cons.quota.used, quota: cons.quota.quota }
+  });
+  try { await saveStateToDb(); } catch(_) { /* quota already server-confirmed */ }
+
+  _editConsumed = true;
+  renderQuotes(); renderDash(); await renderQuotaCard();
+  toast('Quote updated to v'+revised.version+'.');
+  closeEditQuote();
+}
+
+/* ====================================================================
+   QUOTA CARD + QUOTES METRICS (feature build)
+   All numbers come from real application data — no demo/hardcoded values.
+   ==================================================================== */
+async function renderQuotaCard(){
+  const card = document.getElementById('quotaCard');
+  if(!card) return;
+  const q = await window.__cleanbid_quota.getQuota(state);
+  if(q.quota<=0){ card.style.display='none'; return; }
+  card.style.display='flex';
+  const pct = q.quota>0 ? Math.round((q.used/q.quota)*100) : 0;
+  card.classList.toggle('exhausted', q.exhausted);
+  document.getElementById('quotaRing').style.setProperty('--p', pct);
+  document.getElementById('quotaRingTxt').textContent = q.used;
+  document.getElementById('quotaUsed').textContent = q.used;
+  document.getElementById('quotaLimit').textContent = q.quota;
+  document.getElementById('quotaRemain').textContent = q.remaining;
+  document.getElementById('quotaBarFill').style.width = pct+'%';
+}
+
+function renderQuotesMetrics(){
+  const set = (id,v)=>{ const el=document.getElementById(id); if(el) el.textContent=v; };
+  const cur = state.pricing.currency==='USD'?'$':state.pricing.currency==='GBP'?'£':state.pricing.currency==='EUR'?'€':'$';
+  const all = state.quotes||[];
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const thisMonth = all.filter(q=>{ const d=new Date(q.createdIso||q.modifiedIso||0); return d>=monthStart; }).length;
+  const open = all.filter(q=>['draft','ready','sent','viewed','negotiation'].includes(q.status));
+  const pipe = open.reduce((s,q)=>s+(q.annual||0),0);
+  const sent = all.filter(q=>['sent','viewed','negotiation','won','lost'].includes(q.status));
+  const avg = sent.length ? Math.round(sent.reduce((s,q)=>s+(q.monthly||0),0)/sent.length) : 0;
+  const quota = (state.editQuota && typeof state.editQuota==='object') ? state.editQuota : {used:0,quota:0,remaining:0};
+
+  set('mTotal', all.length);
+  set('mTotalS', all.length===1?'1 quote':'quotes');
+  set('mMonth', thisMonth);
+  set('mMonthS', thisMonth===1?'created/saved this month':'this month');
+  set('mEdits', quota.used||0);
+  set('mEditsS', 'of '+(quota.quota||0)+' quota');
+  set('mRemain', quota.remaining!==undefined?quota.remaining:(quota.quota||0)-(quota.used||0));
+  set('mRemainS', (quota.remaining>0?'available':'none left'));
+  set('mPipe', cur+Math.round(pipe).toLocaleString());
+  set('mPipeS', open.length+' open');
+  set('mAvg', cur+avg.toLocaleString());
+  set('mAvgS', '/mo avg');
 }
 
 /* ====================================================================
@@ -6503,6 +6928,9 @@ console.log('[CleanBid] ready v2');
   import { bootstrap } from './src/main.js';
   import * as StateApi from './src/state.js';
   import { buildBackup, validateBackup, applyBackup, summarizeState } from './src/backup.js';
+  import { getQuota, consumeEdit, ensureQuota, saveQuota } from './src/quota.js';
+  import { recalculateQuote, applyEditToQuote, quotePriceFields } from './src/quote-edit.js';
+  import { validateEditFields } from './src/quota-core.js';
 
   window.__cleanbid_auth = { initAuth, signUp, signIn, signOut, getCurrentUser, getSession, inviteTeamMember, acceptInvitation };
   window.__cleanbid_db = { initDb, saveState, loadState, loadDemoState, saveDemoState, setCurrentWorkspaceId, getDbMode, flushSave, restoreStateToCloud: restoreStateToSupabase };
@@ -6511,6 +6939,9 @@ console.log('[CleanBid] ready v2');
   // Canonical workspace state-boundary helpers (used by loadStateFromDb).
   window.__cleanbid_stateapi = StateApi;
   window.__cleanbid_backupapi = { buildBackup, validateBackup, applyBackup, summarizeState };
+  window.__cleanbid_quota = { getQuota, consumeEdit, ensureQuota, saveQuota };
+  window.__cleanbid_quoteedit = { recalculateQuote, applyEditToQuote, quotePriceFields };
+  window.__cleanbid_quotacore = { validateEditFields };
 
   // Trigger auth flow now that modules are registered
   if (window.__cleanbid_initAuthFlow) {
