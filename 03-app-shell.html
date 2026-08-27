@@ -111,6 +111,8 @@ img{display:block;max-width:100%}
 
 .main{background:var(--paper);min-height:100vh}
 .topbar{display:flex;align-items:center;justify-content:space-between;padding:14px 36px;border-bottom:1px solid var(--line-soft);background:rgba(251,247,236,.95);backdrop-filter:blur(8px);position:sticky;top:0;z-index:30;gap:18px}
+.demo-banner{display:none;padding:8px 36px;background:var(--accent);color:#fff;font-size:12.5px;font-weight:600;letter-spacing:.2px;position:sticky;top:0;z-index:29}
+.demo-banner strong{font-weight:800;text-transform:uppercase;letter-spacing:.5px}
 .crumbs{font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--text-muted);font-weight:600;flex-shrink:0}
 .crumbs b{color:var(--ink);font-weight:700}
 .crumbs i{color:var(--line);margin:0 6px;font-style:normal}
@@ -260,6 +262,25 @@ tbody tr:hover{background:var(--paper-3)}
 .area-chip .rm:hover{background:var(--bad-soft)}
 /* field-use touch targets: duplicate/remove buttons ≥32px */
 .area-chip .rm{min-width:32px;min-height:32px;display:inline-flex;align-items:center;justify-content:center}
+/* Inline-editable survey controls on each area chip */
+.area-chip .ac-edit{width:100%;margin-top:8px;display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end}
+.area-chip .ac-edit .ef{flex:1 1 120px;min-width:0}
+.area-chip .ac-edit label{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:var(--text-muted);font-weight:700;margin-bottom:3px}
+.area-chip .ac-edit select,
+.area-chip .ac-edit input{width:100%;font-size:12.5px}
+.area-chip .ac-edit .ef-pct{flex:0 0 86px}
+.area-chip .ac-edit .ef-pct input{padding-right:24px}
+.area-chip .pct-wrap{position:relative}
+.area-chip .pct-wrap .pct-sign{position:absolute;right:9px;top:50%;transform:translateY(-50%);font-size:12px;color:var(--text-muted);pointer-events:none}
+.area-chip .floor-warn{font-size:10.5px;color:var(--warn-ink,#a8651b);font-weight:600;flex-basis:100%;margin-top:2px;display:none}
+.area-chip .floor-warn.show{display:block}
+/* Work hours block in the survey */
+.survey-hours{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;background:var(--paper-2);border:1px solid var(--line-soft);border-radius:8px;padding:12px 14px}
+.survey-hours .sh-field{flex:1 1 130px;min-width:0}
+.survey-hours label{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:var(--text-muted);font-weight:700;margin-bottom:3px}
+.survey-hours .sh-note{flex-basis:100%;font-size:11px;color:var(--text-muted);margin-top:2px}
+.survey-hours .sh-note.warn{color:var(--warn-ink,#a8651b);font-weight:600;display:none}
+.survey-hours .sh-note.warn.show{display:block}
 
 /* ====================================================================
    MOBILE STICKY PRICE BAR (workflow P2-1)
@@ -294,16 +315,30 @@ tbody tr:hover{background:var(--paper-3)}
    ==================================================================== */
 .calc{background:var(--ink);color:#fff;border-radius:12px;padding:22px;overflow:hidden;box-shadow:var(--shadow-2)}
 .calc::after{content:"";position:absolute;top:-30px;right:-30px;width:120px;height:120px;background:var(--accent);opacity:.14;border-radius:50%}
-.calc .ct{font-family:'Fraunces',serif;font-style:italic;font-weight:500;font-size:13px;color:rgba(255,255,255,.6);margin-bottom:14px;position:relative}
+.calc .ct{font-family:'Inter',sans-serif;font-weight:800;font-size:15px;letter-spacing:.4px;color:#fff;margin-bottom:14px;position:relative;text-transform:none}
+.calc .ct .ct-sub{display:block;font-family:'Inter',sans-serif;font-weight:500;font-size:11px;letter-spacing:.2px;color:rgba(255,255,255,.55);margin-top:3px}
 .calc .row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.08);font-size:13px;position:relative;gap:8px}
 .calc .row .l{color:rgba(255,255,255,.65);font-size:12.5px}
 .calc .row .v{font-weight:600;text-align:right}
 .calc .rows-flat .row{border-bottom:0;padding:6px 0}
-.calc .total{margin-top:12px;padding-top:12px;border-top:2px solid var(--accent);position:relative}
-.calc .total .pl{font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--accent);font-weight:700;margin-bottom:4px}
-.calc .total .price{font-family:'Fraunces',serif;font-style:italic;font-weight:500;font-size:42px;letter-spacing:-1.5px;line-height:1}
-.calc .total .annual{margin-top:8px;font-size:12.5px;color:rgba(255,255,255,.65)}
-.calc .total .annual b{color:#fff;font-weight:700}
+/* Pricing Summary hierarchy — calculated / adjustment / final */
+.calc .calc-section{position:relative;margin-top:14px}
+.calc .calc-line{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.calc .calc-line .cl-l{color:rgba(255,255,255,.7);font-size:12px;text-transform:uppercase;letter-spacing:1px;font-weight:600}
+.calc .calc-line .cl-v{font-weight:600;font-size:18px;font-feature-settings:"tnum";font-variant-numeric:tabular-nums}
+.calc .adj-line{margin-top:8px;padding-top:10px;border-top:1px dashed rgba(255,255,255,.18)}
+.calc .adj-line .cl-l{color:var(--accent);text-transform:none;letter-spacing:.3px;font-size:12px}
+.calc .adj-line .cl-v{color:#fff;font-size:16px}
+.calc .adj-reason{font-size:11px;color:rgba(255,255,255,.5);margin-top:3px;font-style:italic}
+.calc .final{margin-top:14px;padding-top:14px;border-top:2px solid var(--accent);position:relative}
+.calc .final .fl-label{font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--accent);font-weight:800;margin-bottom:2px}
+.calc .final .fl-sub{font-size:11px;color:rgba(255,255,255,.55);margin-bottom:8px}
+.calc .final .fl-price{font-family:'Fraunces',serif;font-style:italic;font-weight:500;font-size:42px;letter-spacing:-1.5px;line-height:1;color:#fff}
+.calc .final .fl-annual{margin-top:8px;font-size:12.5px;color:rgba(255,255,255,.65)}
+.calc .final .fl-annual b{color:#fff;font-weight:700}
+.calc .final .fl-pervisit{font-size:12px;color:rgba(255,255,255,.6);margin-top:4px}
+.calc .final .fl-pervisit b{color:#fff;font-weight:700}
+.calc .calc-note{font-size:11px;color:rgba(255,255,255,.45);margin-top:12px;line-height:1.5}
 .calc .why-btn{margin-top:14px;position:relative;width:100%;background:rgba(255,255,255,.08);color:#fff;border:1px solid rgba(255,255,255,.15);padding:9px 12px;border-radius:6px;font-size:12.5px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px}
 .calc .why-btn:hover{background:rgba(255,255,255,.13)}
 
@@ -379,6 +414,7 @@ tbody tr:hover{background:var(--paper-3)}
 .p-price .pl{font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--text-muted);font-weight:700;margin-bottom:8px}
 .p-price .pp{font-family:'Fraunces',serif;font-style:italic;font-weight:500;font-size:42px;color:var(--accent);letter-spacing:-1.5px;line-height:1}
 .p-price .pa{margin-top:8px;font-size:12.5px;color:var(--text)}
+.p-price .pp-line{text-align:left}
 .p-econ{background:var(--paper-2);border:1px solid var(--line);border-radius:8px;padding:18px;margin-top:14px}
 .p-econ h3{font-family:'Fraunces',serif;font-style:italic;font-size:14px;margin-bottom:10px}
 .p-econ .erow{display:flex;justify-content:space-between;font-size:12.5px;padding:4px 0;color:var(--ink)}
@@ -1641,6 +1677,10 @@ tbody tr:hover{background:var(--paper-3)}
         <button class="btn btn-ink btn-sm" onclick="goTo('newquote')">+ New Quote</button>
       </div>
     </header>
+    <!-- P1: persistent SAMPLE-DATA banner so demo data is never mistaken for a real customer -->
+    <div id="demoBanner" class="demo-banner" style="display:none">
+      ⚠ <strong>SAMPLE DATA</strong> — this workspace is loaded with demonstration quotes and companies. None of it is real customer information. Use “Export Backup” to save your own data, or “↻ Demo” to reset.
+    </div>
     <div class="scrim-mob" id="scrim-mob" onclick="toggleSidebar()"></div>
 
     <!-- ============== DASHBOARD ============== -->
@@ -1868,6 +1908,22 @@ tbody tr:hover{background:var(--paper-3)}
                 </div>
               </div>
             </div>
+
+            <div class="sb" style="margin-top:18px">
+              <h4>Work hours <span class="sub" style="font-weight:500;text-transform:none;letter-spacing:0;color:var(--text-muted)">· facility operating hours</span></h4>
+              <div class="survey-hours">
+                <div class="sh-field">
+                  <label for="qbWorkStart">Start</label>
+                  <select class="select" id="qbWorkStart" onchange="setWorkHours()"></select>
+                </div>
+                <div class="sh-field">
+                  <label for="qbWorkEnd">End</label>
+                  <select class="select" id="qbWorkEnd" onchange="setWorkHours()"></select>
+                </div>
+                <div class="sh-note" id="workHoursNote">Default 8:00 AM – 5:00 PM. Edit to match the facility. Overnight schedules supported.</div>
+                <div class="sh-note warn" id="workHoursWarn"></div>
+              </div>
+            </div>
           </div>
 
           <!-- Survey notes (for AI clean-up) -->
@@ -1885,7 +1941,7 @@ tbody tr:hover{background:var(--paper-3)}
         <div class="qb-col qb-billing">
           <!-- the calculator card (dark) -->
           <div class="calc" id="calcPanel">
-            <div class="ct">The numbers.</div>
+            <div class="ct">Pricing Summary<span class="ct-sub" id="cPkgName">Professional</span></div>
             <div class="row"><span class="l">Total area</span><span class="v" id="cArea">0 sq ft</span></div>
             <div class="row"><span class="l">Cleaners needed</span><span class="v" id="cCleaners">0</span></div>
             <div class="row"><span class="l">Hours per visit</span><span class="v" id="cHours">0</span></div>
@@ -1894,12 +1950,26 @@ tbody tr:hover{background:var(--paper-3)}
             <div class="row"><span class="l">Burden / supplies / overhead</span><span class="v tabnum" id="cBurden">$0</span></div>
             <div class="row"><span class="l">Add-ons / visit</span><span class="v tabnum" id="cAddons">$0</span></div>
             <div class="row" style="border-bottom:0"><span class="l">Target margin</span><span class="v tabnum" id="cMargin">0%</span></div>
-            <div class="total">
-              <div class="pl">Recommended monthly · <span class="fr-i" style="font-family:'Fraunces',serif;font-style:italic" id="cPkgName">Professional</span></div>
-              <div class="price tabnum" id="cFinal">$0</div>
-              <div class="annual">Annual contract value · <b class="tabnum" id="cAnnual">$0</b></div>
-              <div class="annual" style="margin-top:4px">Per <span id="unitLabelSqft">sq ft</span> monthly · <b class="tabnum" id="cPSF">$0.00</b></div>
-              <div id="overrideBanner" style="display:none;margin-top:8px;padding:6px 10px;border-radius:6px;background:var(--warn-soft);color:var(--ink);font-size:12px;font-weight:600"></div>
+            <div class="calc-section">
+              <div class="calc-line">
+                <span class="cl-l">Calculated price</span>
+                <span class="cl-v tabnum" id="cFinal">$0</span>
+              </div>
+              <div class="adj-line" id="adjLine" style="display:none">
+                <div class="calc-line">
+                  <span class="cl-l">Adjustment</span>
+                  <span class="cl-v tabnum" id="cAdj">$0</span>
+                </div>
+                <div class="adj-reason" id="adjReason"></div>
+              </div>
+              <div class="final">
+                <div class="fl-label">Final Quoted Price</div>
+                <div class="fl-sub" id="finalSub">Calculated by CleanBid · <span class="fr-i" style="font-family:'Fraunces',serif;font-style:italic" id="cPkgName2">Professional</span></div>
+                <div class="fl-price tabnum" id="cFinalPrice">$0</div>
+                <div class="fl-annual">Annual contract value · <b class="tabnum" id="cAnnual">$0</b></div>
+                <div class="fl-pervisit">Per <span id="unitLabelSqft">sq ft</span> monthly · <b class="tabnum" id="cPSF">$0.00</b></div>
+                <div id="overrideBanner" style="display:none;margin-top:8px;padding:6px 10px;border-radius:6px;background:var(--warn-soft);color:var(--ink);font-size:12px;font-weight:600"></div>
+              </div>
             </div>
             <div style="display:flex;gap:8px;margin-top:2px">
               <button class="why-btn" style="flex:1" onclick="openWhy()">ⓘ Why this price?</button>
@@ -2383,8 +2453,17 @@ Demo City, USA</textarea></div>
           </select>
         </div>
         <div class="field"><label class="label">Flooring</label>
-          <select class="select" id="newAreaFloor"><option>Carpet</option><option>Vinyl/LVT</option><option>Tile</option><option>Hardwood</option><option>Concrete</option><option>Mixed</option></select>
+          <select class="select" id="newAreaFloor" onchange="toggleNewAreaCustomFloor()">
+            <option>Carpet</option><option>VCT</option><option>LVT</option>
+            <option>Linoleum</option><option>Ceramic/Porcelain Tile</option>
+            <option>Concrete</option><option>Hardwood</option><option>Rubber</option>
+            <option>Vinyl</option><option>Tile</option><option>Mixed</option>
+            <option value="__custom__">Other / Custom</option>
+          </select>
         </div>
+      </div>
+      <div class="row2" id="newAreaCustomFloorWrap" style="display:none">
+        <div class="field"><label class="label">Custom flooring type</label><input class="input" id="newAreaFloorCustom" placeholder="e.g. Polished terrazzo"></div>
       </div>
       <div class="row2">
         <div class="field"><label class="label">Difficulty</label>
@@ -3005,6 +3084,9 @@ function bootApp(){
   loadPricingUI();
   loadBrandingUI();
   renderDataBackups();
+  // P1: make it unmistakable when the user is looking at demo/sample data
+  const demoEl = document.getElementById('demoBanner');
+  if(demoEl){ demoEl.style.display = (window.__cleanbid_is_demo ? 'block' : 'none'); }
   recalc();
 }
 
@@ -3075,8 +3157,59 @@ function toggleSidebar(){
    PRICING ENGINE — deterministic
    reads from snapshot priceSnap if present (keeps historical accuracy)
 ==================================================================== */
-const qb = { areas:[], tasks:[], package:'professional', profileId:'std', propertyId:null, calc:null, calcFromSnap:null };
+const qb = { areas:[], tasks:[], package:'professional', profileId:'std', propertyId:null, calc:null, calcFromSnap:null, workHours:{start:'8:00 AM', end:'5:00 PM'}, workHoursOvernight:false };
 
+// ---- Work hours (facility operating hours; not a pricing input) ----
+// Editable, persistable facility characteristic. Overnight-aware.
+const WORK_HOURS_SLOTS = (function(){
+  const out = [];
+  for(let h=0; h<24; h++){
+    for(const m of ['00','15','30','45']){
+      const ampm = h<12 ? 'AM' : 'PM';
+      let hr = h%12; if(hr===0) hr=12;
+      out.push(hr + ':' + m + ' ' + ampm);
+    }
+  }
+  return out;
+})();
+function workHoursToMinutes(t){
+  if(!t) return null;
+  const m = /^(\d{1,2}):(\d{2})\s*(AM|PM)$/i.exec(t.trim());
+  if(!m) return null;
+  let h = parseInt(m[1],10)%12;
+  if(/pm/i.test(m[3])) h += 12;
+  return h*60 + parseInt(m[2],10);
+}
+function populateWorkHoursSelects(){
+  const opts = WORK_HOURS_SLOTS.map(s=>'<option>'+s+'</option>').join('');
+  const s = document.getElementById('qbWorkStart'), e = document.getElementById('qbWorkEnd');
+  if(s && !s.options.length){ s.innerHTML = opts; }
+  if(e && !e.options.length){ e.innerHTML = opts; }
+}
+function syncWorkHoursSelects(){
+  const s = document.getElementById('qbWorkStart'), e = document.getElementById('qbWorkEnd');
+  if(s) s.value = qb.workHours.start;
+  if(e) e.value = qb.workHours.end;
+}
+function setWorkHours(){
+  const s = document.getElementById('qbWorkStart'), e = document.getElementById('qbWorkEnd');
+  if(!s || !e) return;
+  qb.workHours.start = s.value;
+  qb.workHours.end = e.value;
+  const sm = workHoursToMinutes(s.value), em = workHoursToMinutes(e.value);
+  const warn = document.getElementById('workHoursWarn');
+  qb.workHoursOvernight = false;
+  if(sm!==null && em!==null && em <= sm){
+    // overnight (e.g. 10:00 PM -> 6:00 AM) or a zero-length shift
+    if(em === sm){
+      if(warn){ warn.textContent = 'Start and end times are identical — enter a real operating window.'; warn.classList.add('show'); }
+    } else {
+      qb.workHoursOvernight = true;
+      if(warn){ warn.textContent = 'Overnight schedule detected ('+s.value+' → '+e.value+'). Saved as entered.'; warn.classList.add('show'); }
+    }
+  } else if(warn){ warn.textContent=''; warn.classList.remove('show'); }
+  markDirty();
+}
 function activePricing(){
   const profile = state.profiles.find(p=>p.id===qb.profileId);
   if(profile){
@@ -3343,7 +3476,11 @@ function recalc(){
   document.getElementById('cMargin').textContent = margin+'%';
   // P1-2: headline shows the EFFECTIVE price (override if active),
   // while qb.calc.monthly always preserves the canonical calculated price.
-  document.getElementById('cFinal').textContent = fmtCurrency(qb.calc.finalMonthly);
+  const calcPrice = qb.calc.monthly;
+  const finalPrice = qb.calc.finalMonthly;
+  const adj = qb.calc.overridden ? (finalPrice - calcPrice) : 0;
+  document.getElementById('cFinal').textContent = fmtCurrency(calcPrice);
+  document.getElementById('cFinalPrice').textContent = fmtCurrency(finalPrice);
   document.getElementById('cAnnual').textContent = fmtCurrency(qb.calc.finalAnnual);
   document.getElementById('cPSF').textContent = fmtPSF(totalArea>0 ? qb.calc.finalMonthly/totalArea : 0);
   const ovBanner = document.getElementById('overrideBanner');
@@ -3354,6 +3491,18 @@ function recalc(){
     } else { ovBanner.style.display = 'none'; ovBanner.textContent=''; }
   }
   document.getElementById('cPkgName').textContent = cap(qb.package);
+  const cPkgName2 = document.getElementById('cPkgName2');
+  if(cPkgName2) cPkgName2.textContent = cap(qb.package);
+  const finalSub = document.getElementById('finalSub');
+  if(finalSub && finalSub.firstChild) finalSub.firstChild.textContent = (qb.calc.overridden ? 'Adjusted by estimator · ' : 'Calculated by CleanBid · ');
+  const adjLine = document.getElementById('adjLine');
+  const adjReason = document.getElementById('adjReason');
+  if(qb.calc.overridden){
+    if(adjLine) adjLine.style.display = 'block';
+    const cAdj = document.getElementById('cAdj');
+    if(cAdj) cAdj.textContent = (adj>0?'+':'−') + fmtCurrency(Math.abs(adj));
+    if(adjReason) adjReason.textContent = 'Reason: ' + (qb.override.reason||'');
+  } else if(adjLine){ adjLine.style.display = 'none'; }
   // any builder input now counts as unsaved
   markDirty();
   // econ
@@ -3384,6 +3533,7 @@ function recalc(){
   if(hintEl){ hintEl.textContent = `Wage ${curSym()}${P.wage}/hr · ${P.burden}% burden · ${P.overhead}% overhead · ${P.margin}% target margin`; }
   // profile chip on top of calc
   renderAreas(); renderTasks(); renderAddons();
+  populateWorkHoursSelects(); syncWorkHoursSelects();
   // P2-1: keep the mobile sticky price bar in sync (display-only mirror)
   const mp = document.getElementById('mpMonthly');
   if(mp){
@@ -3527,20 +3677,103 @@ function renderAreas(){
     host.innerHTML = '<div class="empty" style="padding:20px 0"><div class="ei">▢</div><div class="es">Click a chip above to add a room, or use the form.</div></div>';
     return;
   }
+  const pctAreas = qb.areas.filter(a=>a.floorPct!==undefined && a.floorPct!==null && String(a.floorPct).trim()!=='' && !isNaN(parseFloat(a.floorPct)));
+  const pctSum = pctAreas.reduce((s,a)=>s+parseFloat(a.floorPct),0);
+  const distWarn = pctAreas.length>1 && pctSum>100.0001;
   host.innerHTML = qb.areas.map(a=>{
     const prod = state.pricing.productivity[a.type] || 2000;
+    const isCustom = a.floor && !FLOORING_TYPES.includes(a.floor) && a.floor!=='__custom__';
+    const floorVal = isCustom ? '__custom__' : (a.floor||'Mixed');
+    const floorOpts = FLOORING_TYPES.map(f=>'<option value="'+f+'" '+(floorVal===f?'selected':'')+'>'+f+'</option>').join('')
+      + '<option value="__custom__" '+(isCustom?'selected':'')+'>Other / Custom</option>';
+    const pctVal = (a.floorPct!==undefined && a.floorPct!==null) ? a.floorPct : '';
+    const freqOpts = AREA_FREQ_OPTIONS.map(o=>'<option value="'+o.v+'" '+(Number(a.freq)===o.v?'selected':'')+'>'+o.label+'</option>').join('');
+    const mtVal = (a.minTask!==undefined && a.minTask!==null && a.minTask!=='') ? a.minTask : (AREA_DEFAULT_MINUTES[a.type]||15);
     return `
-    <div class="area-chip">
+    <div class="area-chip" data-aid="${a.id}">
       <div class="ac-name">${esc(a.name)}</div>
       <div class="ac-meta">${a.sqft.toLocaleString()} sq ft · ${(a.sqft/prod).toFixed(1)} hrs</div>
       <button class="dup" onclick="duplicateArea(${a.id})" title="Duplicate area">❐</button>
       <button class="rm" onclick="removeArea(${a.id})">✕</button>
       <div class="ac-detail">
-        <span>${cap(a.type)}</span><span>${esc(a.floor)}</span><span>${esc(a.diff)}</span><span>${a.freq}x/wk</span>
+        <span>${cap(a.type)}</span><span>${esc(a.diff)}</span><span>${a.freq}x/wk</span><span>${a.minTask!=null&&a.minTask!==''?a.minTask+' min/visit':'—'}</span>
+      </div>
+      <div class="ac-edit">
+        <div class="ef">
+          <label for="fl-${a.id}">Flooring</label>
+          <select class="select" id="fl-${a.id}" onchange="editAreaFloor(${a.id}, this.value)">${floorOpts}</select>
+        </div>
+        <div class="ef" id="flc-${a.id}" style="${isCustom?'':'display:none'}">
+          <label for="flcustom-${a.id}">Custom type</label>
+          <input class="input" id="flcustom-${a.id}" value="${isCustom?esc(a.floor):''}" placeholder="e.g. Polished terrazzo" oninput="editAreaFloorCustom(${a.id}, this.value)">
+        </div>
+        <div class="ef ef-pct">
+          <label for="flp-${a.id}">% of floor</label>
+          <div class="pct-wrap"><input class="input tabnum" id="flp-${a.id}" type="number" min="0" max="100" step="1" value="${pctVal}" placeholder="%" oninput="editAreaFloorPct(${a.id}, this.value)"><span class="pct-sign">%</span></div>
+        <div class="ef ef-freq">
+          <label for="fr-${a.id}">Visits / week</label>
+          <select class="select" id="fr-${a.id}" onchange="editAreaFreq(${a.id}, this.value)">${freqOpts}</select>
+        </div>
+        <div class="ef ef-time">
+          <label for="mt-${a.id}">Min / visit</label>
+          <div class="pct-wrap"><input class="input tabnum" id="mt-${a.id}" type="number" min="0" max="600" step="5" value="${mtVal}" placeholder="min" oninput="editAreaMinTask(${a.id}, this.value)"><span class="pct-sign">min</span></div>
+        </div>
+        </div>
+        <div class="floor-warn ${distWarn?'show':''}" id="flwarn-${a.id}">${distWarn?('Floor distribution totals '+pctSum.toFixed(0)+'% — should be ≤100%.'):''}</div>
       </div>
     </div>`;
   }).join('');
   updateSurveyActions();
+}
+
+const AREA_FREQ_OPTIONS = [
+  {v:7, label:'Daily (7x)'}, {v:6, label:'6x / week'}, {v:5, label:'5x / week'}, {v:4, label:'4x / week'},
+  {v:3, label:'3x / week'}, {v:2, label:'2x / week'}, {v:1, label:'Weekly'}, {v:0.5, label:'Every other week'}
+];
+const AREA_DEFAULT_MINUTES = {
+  office:15, private:18, conference:20, reception:12, hallway:10, lobby:12, restroom:25,
+  kitchen:20, warehouse:15, stairwell:15, medical:25, classroom:15, retail:14, other:15
+};
+
+const FLOORING_TYPES = ['Carpet','VCT','LVT','Linoleum','Ceramic/Porcelain Tile','Concrete','Hardwood','Rubber','Vinyl','Tile','Mixed'];
+function editAreaFloor(id, val){
+  const a = qb.areas.find(x=>x.id===id); if(!a) return;
+  if(val==='__custom__'){
+    a.floor = a.floor && !FLOORING_TYPES.includes(a.floor) ? a.floor : '';
+    const wrap = document.getElementById('flc-'+id);
+    if(wrap) wrap.style.display='block';
+    const inp = document.getElementById('flcustom-'+id);
+    if(inp){ inp.focus(); if(!a.floor) inp.value=''; }
+  } else {
+    a.floor = val;
+    const wrap = document.getElementById('flc-'+id);
+    if(wrap) wrap.style.display='none';
+  }
+  recalc();
+}
+function editAreaFloorCustom(id, val){
+  const a = qb.areas.find(x=>x.id===id); if(!a) return;
+  a.floor = val.trim();
+  recalc();
+}
+function editAreaFloorPct(id, val){
+  const a = qb.areas.find(x=>x.id===id); if(!a) return;
+  a.floorPct = (val===''||val===null) ? null : parseFloat(val);
+  const pa = qb.areas.filter(x=>x.floorPct!==undefined && x.floorPct!==null && String(x.floorPct).trim()!=='' && !isNaN(parseFloat(x.floorPct)));
+  const wasWarn = document.querySelector('.floor-warn.show')!==null;
+  const nowWarn = pa.length>1 && pa.reduce((s,x)=>s+parseFloat(x.floorPct),0)>100.0001;
+  if(wasWarn!==nowWarn) renderAreas();
+  else recalc();
+}
+function editAreaFreq(id, val){
+  const a = qb.areas.find(x=>x.id===id); if(!a) return;
+  a.freq = parseFloat(val) || 1;
+  recalc();
+}
+function editAreaMinTask(id, val){
+  const a = qb.areas.find(x=>x.id===id); if(!a) return;
+  a.minTask = (val===''||val===null) ? null : Math.max(0, parseFloat(val)||0);
+  recalc();
 }
 function removeArea(id){ qb.areas = qb.areas.filter(a=>a.id!==id); recalc(); updateSurveyActions(); }
 function duplicateArea(id){
@@ -3598,7 +3831,7 @@ function addChippedArea(type){
       if(raw === null || raw === undefined) return;        // user cancelled — add nothing
       const sqft = parseFloat(String(raw).replace(/[^0-9.]/g,''));
       if(!(sqft > 0)){ toast('Enter a valid square footage.','warn'); return; }
-      qb.areas.push({id:Date.now(),name:cap(type),sqft,type:type,floor:'Mixed',diff:'Standard',freq:5});
+      qb.areas.push({id:Date.now(),name:cap(type),sqft,type:type,floor:'Carpet',floorPct:null,minTask:(AREA_DEFAULT_MINUTES[type]||15),diff:'Standard',freq:5});
       lastChipType = type;
       recalc();
       updateSurveyActions();
@@ -3713,12 +3946,28 @@ function commitArea(){
   const name = document.getElementById('newAreaName').value.trim()||'New area';
   const sqft = parseFloat(document.getElementById('newAreaSqft').value);
   if(!(sqft>0)){ toast('Enter square footage','warn'); return; }
-  qb.areas.push({id:Date.now(),name,sqft,type:document.getElementById('newAreaType').value,floor:document.getElementById('newAreaFloor').value,diff:document.getElementById('newAreaDiff').value,freq:parseFloat(document.getElementById('newAreaFreq').value)});
+  let floorSel = document.getElementById('newAreaFloor').value;
+  let floor = floorSel;
+  if(floorSel==='__custom__'){
+    floor = document.getElementById('newAreaFloorCustom').value.trim() || 'Custom';
+  }
+  const atype = document.getElementById('newAreaType').value;
+  qb.areas.push({id:Date.now(),name,sqft,type:atype,floor,floorPct:null,minTask:(AREA_DEFAULT_MINUTES[atype]||15),diff:document.getElementById('newAreaDiff').value,freq:parseFloat(document.getElementById('newAreaFreq').value)});
   closeModal('addAreaModal');
   document.getElementById('newAreaName').value=''; document.getElementById('newAreaSqft').value='';
+  document.getElementById('newAreaFloorCustom').value='';
+  const cw = document.getElementById('newAreaCustomFloorWrap'); if(cw) cw.style.display='none';
+  document.getElementById('newAreaFloor').value='Carpet';
   recalc();
   updateSurveyActions();
   toast('Added "'+name+'".');
+}
+
+function toggleNewAreaCustomFloor(){
+  const sel = document.getElementById('newAreaFloor');
+  const wrap = document.getElementById('newAreaCustomFloorWrap');
+  if(!sel || !wrap) return;
+  wrap.style.display = (sel.value==='__custom__') ? 'block' : 'none';
 }
 function openAddTask(){ openModal('addTaskModal'); }
 function commitTask(){
@@ -4528,9 +4777,20 @@ function renderQuotes(){
   // H3: fetch quota ONCE, cache it, and render both the metrics band and the
   // quota ring from the same value so cloud mode never flashes a misleading
   // 0/0 (state.editQuota is undefined in cloud; the server is the source).
-  const qp = window.__cleanbid_quota.getQuota(state);
-  Promise.resolve(qp).then(q=>{ _cachedQuota = q; renderQuotesMetrics(q); renderQuotaCard(); });
-  renderQuotesMetrics(_cachedQuota); // immediate pass (local fallback)
+  // P1 defensive: the module bootstrap always wires window.__cleanbid_quota,
+  // but if a module failed to load we must not take down the whole quotes view.
+  try {
+    if(window.__cleanbid_quota && typeof window.__cleanbid_quota.getQuota === 'function'){
+      const qp = window.__cleanbid_quota.getQuota(state);
+      Promise.resolve(qp).then(q=>{ _cachedQuota = q; renderQuotesMetrics(q); renderQuotaCard(); });
+      renderQuotesMetrics(_cachedQuota); // immediate pass (local fallback)
+    } else {
+      renderQuotesMetrics(_cachedQuota);
+    }
+  } catch (e) {
+    console.warn('[CleanBid] quota fetch skipped:', e && e.message);
+    renderQuotesMetrics(_cachedQuota);
+  }
   const filter = document.getElementById('qFilter').value;
   let qs = filter==='all' ? state.quotes : state.quotes.filter(q=>q.status===filter);
   const host = document.getElementById('qList');
@@ -4693,6 +4953,7 @@ async function saveDraft(){
     profileName: P.profileName,
     areas: JSON.parse(JSON.stringify(qb.areas)),
     tasks: JSON.parse(JSON.stringify(qb.tasks)),
+    workHours: {start:qb.workHours.start, end:qb.workHours.end, overnight:!!qb.workHoursOvernight},
     notes: document.getElementById('qbNotes').value||'',
      addons: JSON.parse(JSON.stringify(state.addons || [])),
     // P1-2: preserve BOTH prices on a saved quote
@@ -4717,7 +4978,7 @@ async function saveDraft(){
      annualAddons: Math.round(qb.calc.annualAddons),
      annualDirectCost: Math.round(qb.calc.annualDirect),
     status:'draft', version:1,
-     versions:[{v:1,total:Math.round(qb.calc.finalMonthly),date:'Today',iso:new Date().toISOString(),monthly:Math.round(qb.calc.finalMonthly),annual:Math.round(qb.calc.finalAnnual),calcMonthly:Math.round(qb.calc.monthly),override:qb.override?{value:Math.round(qb.override.value),reason:qb.override.reason}:null,cleaners:qb.calc.cleaners,hoursPerVisit:qb.calc.hoursPerVisit.toFixed(1),profileId:qb.profileId,workspaceId:state.workspaceId}],
+     versions:[{v:1,total:Math.round(qb.calc.finalMonthly),date:'Today',iso:new Date().toISOString(),monthly:Math.round(qb.calc.finalMonthly),annual:Math.round(qb.calc.finalAnnual),calcMonthly:Math.round(qb.calc.monthly),override:qb.override?{value:Math.round(qb.override.value),reason:qb.override.reason}:null,cleaners:qb.calc.cleaners,hoursPerVisit:qb.calc.hoursPerVisit.toFixed(1),profileId:qb.profileId,workspaceId:state.workspaceId, workHours:{start:qb.workHours.start, end:qb.workHours.end, overnight:!!qb.workHoursOvernight}}],
     date:'Today', modified:'now',
     // P1-4: machine-readable timestamps for reliable sorting/history
     createdIso: new Date().toISOString(),
@@ -5485,7 +5746,7 @@ function renderProposal(q, viewVer){
   let totalAreaSqft = 0;
   if(hasAreas){
     areas.forEach(a=>totalAreaSqft+=a.sqft);
-    areaRows = `<table class="p-table"><thead><tr><th>Area</th><th>Type</th><th>Floor</th><th>Sq Ft</th><th>Frequency</th></tr></thead><tbody>`+areas.map(a=>`<tr><td><b>${esc(a.name)}</b></td><td>${cap(a.type)}</td><td>${esc(a.floor)}</td><td class="tabnum">${a.sqft.toLocaleString()}</td><td>${a.freq}x / wk</td></tr>`).join('')+`</tbody></table>`;
+    areaRows = `<table class="p-table"><thead><tr><th>Area</th><th>Type</th><th>Floor</th><th>Sq Ft</th><th>Frequency</th><th>Time / visit</th></tr></thead><tbody>`+areas.map(a=>`<tr><td><b>${esc(a.name)}</b></td><td>${cap(a.type)}</td><td>${esc(a.floor)}</td><td class="tabnum">${a.sqft.toLocaleString()}</td><td>${a.freq}x / wk</td><td class="tabnum">${a.minTask!=null&&a.minTask!==''?a.minTask+' min':'—'}</td></tr>`).join('')+`</tbody></table>`;
   }
   // package prices — P0-4: recomputed from the quote's own pricing snapshot
   // through the CANONICAL engine (same math as builder + G/B/B). No inline
@@ -5550,6 +5811,7 @@ function renderProposal(q, viewVer){
             <div><div class="eyebrow">Frequency</div><p style="font-size:13.5px">${freqLabel(q.frequency)}</p></div>
             <div><div class="eyebrow">Monthly visits</div><p style="font-size:13.5px" class="tabnum">${q.visitsPerMonth}</p></div>
             <div><div class="eyebrow">Staffing per visit</div><p style="font-size:13.5px">${disp.cleaners} cleaner${disp.cleaners>1?'s':''}</p></div>
+            <div><div class="eyebrow">Work hours</div><p style="font-size:13.5px">${(q.workHours && q.workHours.start) ? (q.workHours.start + ' \u2013 ' + q.workHours.end + (q.workHours.overnight ? ' (overnight)' : '')) : '\u2014'}</p></div>
             <div><div class="eyebrow">Hours per visit</div><p style="font-size:13.5px" class="tabnum">${disp.hoursPerVisit}</p></div>
           </div>
         </div>
@@ -5603,9 +5865,12 @@ function renderProposal(q, viewVer){
         <div class="p-sec">
           <h2>Investment</h2>
           <div class="p-price">
-            <div class="pl">Monthly service investment</div>
-            <div class="pp tabnum">${cur}${Math.round(disp.monthly).toLocaleString()}</div>
-            ${disp.override && disp.calcMonthly ? `<p class="hint tabnum" style="margin-top:6px">Final pricing adjusted from the calculated ${cur}${Math.round(disp.calcMonthly).toLocaleString()}/mo and confirmed by ${esc(org.name)}.</p>` : ''}
+            <div class="pl">Pricing summary</div>
+            <div class="pp-line" style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px"><span style="font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);font-weight:600">Calculated price</span><b class="tabnum" style="font-size:18px">${cur}${Math.round(disp.calcMonthly!=null?disp.calcMonthly:disp.monthly).toLocaleString()}</b></div>
+            ${disp.override && disp.calcMonthly!=null ? `<div class="pp-line" style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;color:var(--accent)"><span style="font-size:12px;text-transform:uppercase;letter-spacing:1px;font-weight:600">Adjustment</span><b class="tabnum" style="font-size:16px">${cur}${(Math.round(disp.monthly)-Math.round(disp.calcMonthly)).toLocaleString()}</b></div>` : ''}
+            <div class="pp tabnum" style="margin-top:6px;border-top:2px solid var(--accent);padding-top:10px">${cur}${Math.round(disp.monthly).toLocaleString()}</div>
+            <div class="pl" style="margin-top:6px;font-size:10px;letter-spacing:1.5px;color:var(--accent);font-weight:800">Final Quoted Price</div>
+            ${disp.override && disp.calcMonthly!=null ? `<p class="hint tabnum" style="margin-top:6px">Calculated ${cur}${Math.round(disp.calcMonthly).toLocaleString()}/mo adjusted by estimator to ${cur}${Math.round(disp.monthly).toLocaleString()}/mo.</p>` : ''}
             <div class="pa tabnum">Annual contract value: <b>${cur}${Math.round(disp.annual).toLocaleString()}</b><br>Effective rate: <b>${cur}${(q.sqft>0 ? (disp.monthly/q.sqft).toFixed(3) : '—')}/sq ft/month</b></div>
           </div>
           <div class="p-econ">

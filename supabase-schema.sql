@@ -109,6 +109,7 @@ CREATE TABLE IF NOT EXISTS quotes (
   areas JSONB DEFAULT '[]',
   tasks JSONB DEFAULT '[]',
   addons JSONB DEFAULT '[]',
+  work_hours JSONB DEFAULT '{"start":"8:00 AM","end":"5:00 PM","overnight":false}',
   cleaners INTEGER,
   hours_per_visit DECIMAL,
   visits_per_month DECIMAL,
