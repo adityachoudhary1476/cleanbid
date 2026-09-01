@@ -3,6 +3,7 @@
  * Initializes modules and bootstraps the application.
  */
 
+import { inject } from '@vercel/analytics';
 import { initAuth } from './auth.js';
 import { initDb } from './db.js';
 import { initWorkspace } from './workspace.js';
@@ -12,6 +13,9 @@ import { initWorkspace } from './workspace.js';
  */
 export async function bootstrap() {
   console.log('[CleanBid] Bootstrapping...');
+
+  // Initialize Vercel Analytics
+  inject();
 
   // Initialize modules in order
   const cloudMode = await initAuth();

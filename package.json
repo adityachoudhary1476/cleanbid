@@ -12,7 +12,8 @@
     "lint": "echo 'No linter configured'"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.49.1"
+    "@supabase/supabase-js": "^2.49.1",
+    "@vercel/analytics": "^2.0.1"
   },
   "devDependencies": {
     "vite": "^6.0.0",
